@@ -1,0 +1,31 @@
+// All of the requested modules are loaded behind enumerable getters.
+const map = Object.defineProperties({}, {
+  "./(tabs)/_layout.tsx": { enumerable: true, get() { return require("/home/project/src/app/(tabs)/_layout.tsx"); } },
+  "./(tabs)/exam.tsx": { enumerable: true, get() { return require("/home/project/src/app/(tabs)/exam.tsx"); } },
+  "./(tabs)/homework.tsx": { enumerable: true, get() { return require("/home/project/src/app/(tabs)/homework.tsx"); } },
+  "./(tabs)/index.tsx": { enumerable: true, get() { return require("/home/project/src/app/(tabs)/index.tsx"); } },
+  "./(tabs)/mine.tsx": { enumerable: true, get() { return require("/home/project/src/app/(tabs)/mine.tsx"); } },
+  "./(tabs)/preview.tsx": { enumerable: true, get() { return require("/home/project/src/app/(tabs)/preview.tsx"); } },
+  "./(tabs)/week.tsx": { enumerable: true, get() { return require("/home/project/src/app/(tabs)/week.tsx"); } },
+  "./_layout.tsx": { enumerable: true, get() { return require("/home/project/src/app/_layout.tsx"); } },
+  "./auth.tsx": { enumerable: true, get() { return require("/home/project/src/app/auth.tsx"); } },
+  "./detail/_layout.tsx": { enumerable: true, get() { return require("/home/project/src/app/detail/_layout.tsx"); } },
+  "./detail/course-edit.tsx": { enumerable: true, get() { return require("/home/project/src/app/detail/course-edit.tsx"); } },
+  "./detail/course/[id].tsx": { enumerable: true, get() { return require("/home/project/src/app/detail/course/[id].tsx"); } },
+});
+
+function metroContext(request) {
+    return map[request];
+}
+
+// Return the keys that can be resolved.
+metroContext.keys = function metroContextKeys() {
+  return Object.keys(map);
+};
+
+// Return the module identifier for a user request.
+metroContext.resolve = function metroContextResolve(request) {
+  throw new Error('Unimplemented Metro module context functionality');
+}
+
+module.exports = metroContext;

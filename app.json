@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "课程表",
+    "slug": "course-schedule",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "plugins": [
+      "expo-sqlite",
+      "expo-notifications",
+      "expo-secure-store",
+      "expo-asset",
+      "expo-file-system",
+      "expo-sharing",
+      "expo-haptics",
+      "expo-location"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.anonymous.courseschedule"
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
