@@ -21,10 +21,101 @@ export interface TimetablePlan {
   warnings: string[];
 }
 
-const CELL_RE = /^([^\n]+)\n(.+?)\s*·\s*([^·\s][^·]*)$/;
 const PALETTE = ['#2f7d63', '#4a7fb5', '#b5651d', '#7b5ea7', '#c8452f', '#2f8d8a', '#8a6d3b', '#556b2f', '#9457a0', '#3b7ea1'];
 
 function pad2(n: number): string { return String(n).padStart(2, '0'); }
+
+/** 全角 → 半角（数字、冒号、连字符、波浪号、空格等），并统一各种破折号为半角 '-' */
+function toHalfWidth(s: string): string {
+  return s
+    .replace(/[\uFF01-\uFF5E]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+    .replace(/\u3000/g, ' ')
+    .replace(/[—–－~～至到]/g, '-');
+}
+
+/** 单个时间点归一化：'8:45' / '08:45:00' / '0.364583'（Excel 时间小数）→ 'HH:mm' */
+function normalizeClock(raw: string): string | null {
+  const s = toHalfWidth(raw).trim();
+  if (!s) return null;
+  // Excel 把时间存成一天的比例（0~1 的小数）
+  if (/^0?\.\d+$/.test(s) || /^[01](\.\d+)?$/.test(s)) {
+    const frac = Number(s);
+    if (Number.isFinite(frac) && frac >= 0 && frac < 1) {
+      const total = Math.round(frac * 24 * 60);
+      return `${pad2(Math.floor(total / 60) % 24)}:${pad2(total % 60)}`;
+    }
+  }
+  const m = s.match(/^(\d{1,2})\s*[:：]\s*(\d{1,2})(?:\s*[:：]\s*\d{1,2})?$/);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const mi = Number(m[2]);
+  if (!Number.isFinite(h) || !Number.isFinite(mi) || h > 23 || mi > 59) return null;
+  return `${pad2(h)}:${pad2(mi)}`;
+}
+
+/**
+ * 时间区间归一化：兼容 '08:45-09:15'、'8:45~9:15'、'08:45－09:15'、'08:45:00-09:15:00'、
+ * '08:45 至 09:15'、Excel 时间小数等写法。
+ * ⚠️ 用户「只改了上课时间就导入失败」的根因：原实现只认半角 '-' 的 HH:mm-HH:mm，
+ * 手改时间时输入法打出全角连字符/波浪号、或 Excel 把单元格存成时间类型，整行就被静默跳过。
+ */
+export function normalizeTimeRange(raw: string): { start: string; end: string } | null {
+  const s = toHalfWidth(raw).trim();
+  if (!s) return null;
+  const parts = s.split('-').map((p) => p.trim()).filter(Boolean);
+  if (parts.length < 2) return null;
+  const start = normalizeClock(parts[0]);
+  const end = normalizeClock(parts[1]);
+  if (!start || !end) return null;
+  return { start, end };
+}
+
+/** 节次号归一化：兼容 '1'、'1.'、'1、'、'第1节'、'1节'、' 1 '，返回 1..20 或 null */
+export function parsePeriodIndex(cell: unknown): number | null {
+  if (cell == null) return null;
+  const s = toHalfWidth(String(cell)).trim();
+  if (!s) return null;
+  const m = s.match(/^第?\s*(\d{1,2})\s*[.、．)）节]?$/);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isFinite(n) && n >= 1 && n <= 20 ? n : null;
+}
+
+/** 课程格子解析结果 */
+export interface CourseCell {
+  name: string;
+  room: string;
+  teacher: string;
+}
+
+/**
+ * 课程格子解析：按优先级兼容多种写法
+ *  1. 「课名\n教室 · 教师」（标准格式）
+ *  2. 「课名\n教室」（无教师）
+ *  3. 「课名 教室 教师」（空格/制表符分隔，取最后两段）
+ *  4. 「课名」（只有课名）
+ * 课名为空才返回 null。
+ */
+export function parseCourseCell(raw: string): CourseCell | null {
+  const text = String(raw ?? '').replace(/\r/g, '').trim();
+  if (!text) return null;
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  if (lines.length >= 2) {
+    const name = lines[0];
+    const rest = lines.slice(1).join(' ');
+    // 优先按「·」拆教室 / 教师
+    const dot = rest.split(/[·•・]/).map((p) => p.trim()).filter(Boolean);
+    if (dot.length >= 2) return { name, room: dot[0], teacher: dot.slice(1).join(' ') };
+    // 无「·」时按空白拆：最后一段当教师，其余当教室
+    const seg = rest.split(/\s+/).filter(Boolean);
+    if (seg.length >= 2) return { name, room: seg.slice(0, -1).join(' '), teacher: seg[seg.length - 1] };
+    return { name, room: rest, teacher: '' };
+  }
+  // 单行：尝试「课名 教室 教师」
+  const seg = text.split(/\s+/).filter(Boolean);
+  if (seg.length >= 3) return { name: seg[0], room: seg[1], teacher: seg.slice(2).join(' ') };
+  return { name: text, room: '', teacher: '' };
+}
 
 /** 从「2026/9/7 — 9/13」「2026-09-07 ~ ...」等文本里取第一个合法日期 */
 function firstDate(s: string | undefined): Date | null {
@@ -74,6 +165,51 @@ function extractClass(fileName: string, titleLine: string): string {
 export interface CellRange {
   s: { r: number; c: number };
   e: { r: number; c: number };
+}
+
+/**
+ * 把工作表读成二维字符串数组。
+ * ⚠️ 真机「导入失败：总行数 1、合并区域 202」的根因：固定壳里 xlsx 解析出的
+ * `ws['!ref']` 可能残缺（只覆盖 A1）甚至缺失，而 `sheet_to_json` 完全依赖 `!ref`
+ * 决定扫描范围——ref 残缺时只返回 1 行、ref 缺失时返回 0 行，于是「第 N 周」块、
+ * 节次行全部读不到，报「未能在文件中找到开学日期」。
+ * ✅ 修复：不信任 `!ref`，用所有单元格键（A1/B5/…）反算真实的最大行列重建范围，
+ * 再与 `!ref` 取并集，保证不漏行。
+ */
+export function readSheetRows(ws: XLSX.WorkSheet): string[][] {
+  const keys = Object.keys(ws).filter((k) => !k.startsWith('!'));
+  let maxR = -1;
+  let maxC = -1;
+  for (const k of keys) {
+    const cell = (ws as Record<string, unknown>)[k];
+    if (!cell || typeof cell !== 'object') continue;
+    let d: { r: number; c: number };
+    try {
+      d = XLSX.utils.decode_cell(k);
+    } catch {
+      continue;
+    }
+    if (Number.isFinite(d.r) && d.r > maxR) maxR = d.r;
+    if (Number.isFinite(d.c) && d.c > maxC) maxC = d.c;
+  }
+  // 合并区域也可能超出单元格键范围（合并区里只有锚点有值）
+  for (const m of ((ws['!merges'] ?? []) as CellRange[])) {
+    if (m?.e?.r > maxR) maxR = m.e.r;
+    if (m?.e?.c > maxC) maxC = m.e.c;
+  }
+  const declared = typeof ws['!ref'] === 'string' ? XLSX.utils.decode_range(ws['!ref']) : null;
+  if (declared) {
+    if (declared.e.r > maxR) maxR = declared.e.r;
+    if (declared.e.c > maxC) maxC = declared.e.c;
+  }
+  if (maxR < 0 || maxC < 0) {
+    console.warn('[timetable] 工作表里没有任何单元格，!ref=', ws['!ref']);
+    return [];
+  }
+  const ref = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: maxR, c: maxC } });
+  console.info(`[timetable] 工作表范围：声明 !ref=${ws['!ref'] ?? '(缺失)'}，按单元格重建=${ref}（${keys.length} 个单元格）`);
+  const patched: XLSX.WorkSheet = { ...ws, '!ref': ref };
+  return XLSX.utils.sheet_to_json<string[]>(patched, { header: 1, raw: false, defval: '' });
 }
 
 /**
@@ -148,24 +284,58 @@ export function parseTimetableRows(rows: string[][], fileName: string): Timetabl
   const periods: Array<Omit<PeriodSlot, 'id'>> = [];
   const periodTimes = new Map<number, string>();
   let firstBlockHeaderRow = -1;
+  let scannedRows = 0;
+  let idxHits = 0;
+  let timeMisses = 0;
+  let firstTimeMissRow = -1;
+  let firstTimeMissRaw = '';
   for (const block of weekTitleRows) {
     for (let i = block.row + 1; i < rows.length; i++) {
       const r = rows[i];
       const c0 = r?.[0];
       if (typeof c0 === 'string' && /^第\s*\d+\s*周/.test(c0)) break; // 下一周块
-      const idx = Number(c0);
-      if (Number.isFinite(idx) && idx >= 1 && idx <= 20 && typeof r?.[1] === 'string' && /^\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}$/.test(r[1].trim())) {
-        if (firstBlockHeaderRow < 0) firstBlockHeaderRow = i;
-        if (!periodTimes.has(idx)) {
-          periodTimes.set(idx, r[1].trim());
-          periods.push({ index: idx, startTime: r[1].trim().split('-')[0].trim(), endTime: r[1].trim().split('-')[1].trim(), isBreak: 0 });
-        } else if (periodTimes.get(idx) !== r[1].trim()) {
-          warnings.push(`第 ${idx} 节课在不同周的上课时间不一致，已按第 1 周导入`);
-        }
+      const idx = parsePeriodIndex(c0);
+      if (idx == null) continue;
+      scannedRows++;
+      idxHits++;
+      // ⚠️ 时间列不一定在第 2 列：有的课表把「节次」和「时间」合并成一列，或前面多一列备注。
+      // 逐列找第一个能解析成时间区间的单元格，避免整块作息识别失败。
+      let range: { start: string; end: string } | null = null;
+      let rawTime = '';
+      for (let c = 1; c < Math.min(r?.length ?? 0, 5); c++) {
+        const cell = r?.[c];
+        if (typeof cell !== 'string' || !cell.trim()) continue;
+        const parsed = normalizeTimeRange(cell);
+        if (parsed) { range = parsed; rawTime = cell; break; }
+        if (!rawTime) rawTime = cell;
+      }
+      if (!range) {
+        timeMisses++;
+        if (firstTimeMissRow < 0) { firstTimeMissRow = i + 1; firstTimeMissRaw = rawTime; }
+        continue;
+      }
+      if (firstBlockHeaderRow < 0) firstBlockHeaderRow = i;
+      const key = `${range.start}-${range.end}`;
+      if (!periodTimes.has(idx)) {
+        periodTimes.set(idx, key);
+        periods.push({ index: idx, startTime: range.start, endTime: range.end, isBreak: 0 });
+      } else if (periodTimes.get(idx) !== key) {
+        warnings.push(`第 ${idx} 节课在不同周的上课时间不一致，已按第 1 周导入`);
       }
     }
   }
-  if (periods.length === 0) throw new Error('未能识别节次与时间列（需「节次 / 时间」两列，时间为 HH:mm-HH:mm）');
+  if (timeMisses > 0) {
+    warnings.push(`有 ${timeMisses} 行节次的时间列无法识别（首个在第 ${firstTimeMissRow} 行），已跳过这些节次`);
+    console.warn(`[timetable] ${timeMisses} 行时间列无法识别，首个在第 ${firstTimeMissRow} 行，内容「${firstTimeMissRaw.slice(0, 40)}」`);
+  }
+  console.info(`[timetable] 作息扫描：扫描 ${scannedRows} 行，识别节次 ${idxHits} 个，成功解析时间 ${periods.length} 节`);
+  if (periods.length === 0) {
+    throw new Error(
+      `未能识别节次与时间列：共扫描 ${scannedRows} 行，节次列识别到 ${idxHits} 个，时间列识别到 0 个` +
+        (firstTimeMissRow > 0 ? `（首个问题行在第 ${firstTimeMissRow} 行，该行时间列内容是「${firstTimeMissRaw.slice(0, 40)}」）` : '') +
+        '。时间列需形如 08:45-09:15（也支持 8:45~9:15、08:45－09:15、08:45:00-09:15:00）',
+    );
+  }
   periods.sort((a, b) => a.index - b.index);
 
   // 逐周扫描格子：key = name|teacher|room|weekday|startPeriod → 周次集合
@@ -177,15 +347,17 @@ export function parseTimetableRows(rows: string[][], fileName: string): Timetabl
     const blockEnd = b + 1 < weekTitleRows.length ? weekTitleRows[b + 1].row : rows.length;
     for (let i = block.row + 1; i < blockEnd; i++) {
       const r = rows[i];
-      const idx = Number(r?.[0]);
-      if (!Number.isFinite(idx) || idx < 1 || idx > 20) continue;
+      const idx = parsePeriodIndex(r?.[0]);
+      if (idx == null) continue;
       for (let col = 2; col <= 8; col++) {
         const v = r[col];
         if (typeof v !== 'string' || !v.trim()) continue;
         if (/^周[一二三四五六日]/.test(v.trim())) continue; // 表头行
-        const m = v.trim().match(CELL_RE);
-        if (!m) { unnamed++; continue; }
-        const key: CellKey = { name: m[1].trim(), teacher: m[3].trim(), room: m[2].trim(), weekday: col - 1, startPeriod: idx };
+        // 周标题行被合并单元格回填到第 2-8 列时，内容是日期区间，不是课程
+        if (/^\d{4}\s*[/\-.]\s*\d{1,2}/.test(v.trim())) continue;
+        const cell = parseCourseCell(v);
+        if (!cell) { unnamed++; continue; }
+        const key: CellKey = { name: cell.name, teacher: cell.teacher, room: cell.room, weekday: col - 1, startPeriod: idx };
         const id = `${key.name}|${key.teacher}|${key.room}|${key.weekday}|${key.startPeriod}`;
         const rec = occ.get(id) ?? { key, weeks: [], endPeriods: new Map<number, number>() };
         rec.weeks.push(block.week);
@@ -194,8 +366,8 @@ export function parseTimetableRows(rows: string[][], fileName: string): Timetabl
       }
     }
   }
-  if (unnamed > 0) warnings.push(`有 ${unnamed} 个格子不符合「课程名\\n教室 · 教师」格式，已跳过`);
-  if (occ.size === 0) throw new Error('未解析到任何课程格子');
+  if (unnamed > 0) warnings.push(`有 ${unnamed} 个格子内容为空或无法识别课程名，已跳过`);
+  if (occ.size === 0) throw new Error('未解析到任何课程格子（格子内容需至少包含课程名，如「数据库基础」或「数据库基础\\n格物楼410-1 · 胡梦迪」）');
 
   // 连堂合并：同星期、紧邻下一节、周次集合完全一致的同名同师课程合并为一门（endPeriod 扩展）
   const entries = [...occ.values()];
@@ -296,16 +468,24 @@ export function parseTimetableRows(rows: string[][], fileName: string): Timetabl
   };
 }
 
+/** 解析结果：成功带 plan，失败带用户可读的失败原因（不再静默返回 null） */
+export type TimetablePickResult =
+  | { status: 'ok'; plan: TimetablePlan }
+  | { status: 'canceled' }
+  | { status: 'error'; message: string };
+
 /** 选取 xlsx 文件并解析（web 走 ArrayBuffer，原生走 File.read） */
-export async function pickAndParseTimetable(): Promise<TimetablePlan | null> {
+export async function pickAndParseTimetable(): Promise<TimetablePickResult> {
+  let stage = '选择文件';
   try {
     const result = await DocumentPicker.getDocumentAsync({
       type: ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel', '.xlsx', '.xls'],
       copyToCacheDirectory: true,
     });
-    if (result.canceled || !result.assets || result.assets.length === 0) return null;
+    if (result.canceled || !result.assets || result.assets.length === 0) return { status: 'canceled' };
     const picked = result.assets[0];
     const name = picked.name || '课表.xlsx';
+    stage = '读取文件内容';
     let wb: XLSX.WorkBook;
     if (Platform.OS === 'web') {
       const resp = await fetch(picked.uri);
@@ -317,23 +497,94 @@ export async function pickAndParseTimetable(): Promise<TimetablePlan | null> {
       const buf = await file.arrayBuffer();
       wb = XLSX.read(new Uint8Array(buf), { type: 'array' });
     }
+    stage = '打开工作表';
     const sheetName = wb.SheetNames[0];
     const ws = wb.Sheets[sheetName];
+    if (!ws) throw new Error('文件里没有可读取的工作表');
     // ⚠️ 连堂课在 xlsx 里是「跨节次的纵向合并单元格」，sheet_to_json 只在合并区左上角放值，
     // 后续节次行读到空串 → endPeriod 丢失、课程时间被截断成第一节（如 10:30-11:15 + 11:25-12:10
     // 只剩 10:30-11:15）。这里先按 !merges 把锚点值回填到整个合并区再解析。
-    const rawRows = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1, raw: false, defval: '' });
+    const rawRows = readSheetRows(ws);
     const merges = (ws['!merges'] ?? []) as CellRange[];
     console.info(`[timetable] 工作表合并区域 ${merges.length} 个，准备展开跨节次连堂单元格`);
     const rows = fillMergedCells(rawRows.map((r) => (r || []).map((c) => String(c ?? ''))), merges);
     console.info(`[timetable] 已读取 ${name}（sheet=${sheetName}，${rows.length} 行），开始解析`);
+    stage = '解析课表结构';
     const plan = parseTimetableRows(rows, name);
     console.info(`[timetable] 解析完成：学期「${plan.semesterName}」${plan.startDate} 起 ${plan.totalWeeks} 周，作息 ${plan.periods.length} 节，课程 ${plan.courses.length} 条，警告 ${plan.warnings.length} 条`);
-    return plan;
+    return { status: 'ok', plan };
   } catch (error) {
-    console.warn('[timetable] 课表文件解析失败', error);
-    return null;
+    const raw = error instanceof Error ? error.message : String(error);
+    console.warn(`[timetable] 课表文件解析失败（阶段：${stage}）`, error);
+    return { status: 'error', message: `${stage}失败：${raw}` };
   }
+}
+
+/**
+ * 诊断用：把解析过程的关键中间结果直接返回给界面展示。
+ * 用户报「导入失败」但拿不到具体原因时，用它一次性看清卡在哪一步。
+ */
+export interface TimetableDiagnose {
+  fileName: string;
+  sheetName: string;
+  rowCount: number;
+  mergeCount: number;
+  weekBlocks: number;
+  periodRows: number;
+  periods: number;
+  courseCells: number;
+  courses: number;
+  warnings: string[];
+  error: string | null;
+}
+
+export async function diagnoseTimetableFile(): Promise<TimetableDiagnose | null> {
+  const result = await DocumentPicker.getDocumentAsync({
+    type: ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel', '.xlsx', '.xls'],
+    copyToCacheDirectory: true,
+  });
+  if (result.canceled || !result.assets || result.assets.length === 0) return null;
+  const picked = result.assets[0];
+  const name = picked.name || '课表.xlsx';
+  const diag: TimetableDiagnose = {
+    fileName: name, sheetName: '', rowCount: 0, mergeCount: 0, weekBlocks: 0,
+    periodRows: 0, periods: 0, courseCells: 0, courses: 0, warnings: [], error: null,
+  };
+  try {
+    let wb: XLSX.WorkBook;
+    if (Platform.OS === 'web') {
+      const resp = await fetch(picked.uri);
+      wb = XLSX.read(await resp.arrayBuffer(), { type: 'array' });
+    } else {
+      const buf = await new File(picked.uri).arrayBuffer();
+      wb = XLSX.read(new Uint8Array(buf), { type: 'array' });
+    }
+    diag.sheetName = wb.SheetNames[0] ?? '';
+    const ws = wb.Sheets[diag.sheetName];
+    if (!ws) throw new Error('文件里没有可读取的工作表');
+    const rawRows = readSheetRows(ws);
+    const merges = (ws['!merges'] ?? []) as CellRange[];
+    diag.mergeCount = merges.length;
+    const rows = fillMergedCells(rawRows.map((r) => (r || []).map((c) => String(c ?? ''))), merges);
+    diag.rowCount = rows.length;
+    for (const r of rows) {
+      if (typeof r?.[0] === 'string' && /^第\s*\d+\s*周/.test(r[0])) diag.weekBlocks++;
+      if (parsePeriodIndex(r?.[0]) != null) diag.periodRows++;
+      for (let c = 2; c <= 8; c++) {
+        const v = r?.[c];
+        if (typeof v === 'string' && v.trim() && !/^周[一二三四五六日]/.test(v.trim()) && !/^\d{4}\s*[/\-.]\s*\d{1,2}/.test(v.trim())) diag.courseCells++;
+      }
+    }
+    const plan = parseTimetableRows(rows, name);
+    diag.periods = plan.periods.length;
+    diag.courses = plan.courses.length;
+    diag.warnings = plan.warnings;
+    console.info(`[timetable] 诊断完成：${JSON.stringify({ ...diag, warnings: diag.warnings.length })}`);
+  } catch (error) {
+    diag.error = error instanceof Error ? error.message : String(error);
+    console.warn('[timetable] 诊断失败', error);
+  }
+  return diag;
 }
 
 /** 确认导入后落库：新建学期 + 覆盖作息 + 批量插入课程 */

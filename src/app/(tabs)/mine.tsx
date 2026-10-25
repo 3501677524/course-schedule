@@ -13,8 +13,11 @@ import { FadeInUp, useReplayId } from '@/components/motion';
 import { useApp } from '@/hooks/useAppData';
 import { useAuth } from '@/hooks/useAuth';
 import { CloudClassPanel } from '@/components/CloudClassPanel';
+import { AccountPanel } from '@/components/AccountPanel';
 import { AgreementText } from '@/components/AgreementText';
 import { UpdatePanel } from '@/components/UpdatePanel';
+import { BackgroundSheet } from '@/components/BackgroundSheet';
+import { CURRENT_VERSION } from '@/services/updateCheck';
 import { CITY_PRESETS, findCity } from '@/services/weather';
 import { LOCATION_CITY_KEY, useWeather } from '@/hooks/useWeather';
 import { ACCENT_ORDER, PALETTES, useTheme } from '@/components/theme';
@@ -26,11 +29,13 @@ import { exportBackup, importBackup, restoreDefaultTimetable } from '@/services/
 import { DEFAULT_COURSES, DEFAULT_PERIODS, DEFAULT_SEMESTER } from '@/services/defaultTimetable';
 import { pickBackup, writeAndShare } from '@/services/files';
 import { shareTemplate } from '@/services/templateAsset';
-import { applyTimetablePlan, pickAndParseTimetable } from '@/services/timetableImport';
+import { applyTimetablePlan, diagnoseTimetableFile, pickAndParseTimetable, type TimetablePlan } from '@/services/timetableImport';
+import { parseTimetableText } from '@/services/timetableTextImport';
+import * as Clipboard from 'expo-clipboard';
 import { notificationPermissionHint, prepareNotifications } from '@/services/notifications';
-import type { AccentKey, CalendarEvent, PeriodSlot, Semester } from '@/types';
+import type { AccentKey, AppSettings, CalendarEvent, PeriodSlot, Semester } from '@/types';
 
-type Sheet = null | 'course' | 'period' | 'semester' | 'calendar' | 'remind' | 'data' | 'stats' | 'exam' | 'homework' | 'weather' | 'about' | 'cloud' | 'update';
+type Sheet = null | 'course' | 'period' | 'semester' | 'calendar' | 'remind' | 'data' | 'stats' | 'exam' | 'homework' | 'weather' | 'about' | 'cloud' | 'update' | 'account' | 'background';
 
 /** 各二级面板的标题（供全屏 Sheet 头部展示） */
 const SHEET_TITLES: Record<Exclude<Sheet, null>, string> = {
@@ -46,7 +51,17 @@ const SHEET_TITLES: Record<Exclude<Sheet, null>, string> = {
   weather: '天气与生活建议',
   cloud: '班级课表云同步',
   update: '检查更新',
+  account: '我的账号',
   about: '关于软件',
+  background: '背景与外观',
+};
+
+/** 背景模式的中文标签（一级菜单行项右侧展示当前值） */
+const BG_MODE_LABELS: Record<AppSettings['bgMode'], string> = {
+  theme: '跟随主题',
+  solid: '纯色',
+  gradient: '渐变',
+  image: '图片',
 };
 
 export default function MineScreen() {
@@ -54,7 +69,7 @@ export default function MineScreen() {
   const app = useApp();
   const auth = useAuth();
   const router = useRouter();
-  const { colors, mode } = useTheme();
+  const { colors, mode, bgDriven } = useTheme();
   // sheet：当前二级面板类型；sheetVisible：是否处于「显示态」。
   // 关闭时先置 visible=false 触发 FullSheet 下滑退场动画，动画结束 onClosed 再 setSheet(null) 卸载。
   const [sheet, setSheet] = useState<Sheet>(null);
@@ -162,10 +177,29 @@ export default function MineScreen() {
         }}
       >
       <FadeInUp runId={runId}>
-        <PageHeader title="我的" subtitle={app.semester ? `${app.semester.name} · ${app.weekLabel}` : '尚未设置学期'} />
+        <PageHeader
+          title="我的"
+          subtitle={app.semester ? `${app.semester.name} · ${app.weekLabel}` : '尚未设置学期'}
+          right={
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={auth.session ? `当前账号 ${auth.displayName}` : '未登录，点击登录'}
+              onPress={() => openSheet('account')}
+              style={({ pressed }) => [
+                styles.userChip,
+                { backgroundColor: colors.cardSoft, borderColor: colors.border, opacity: pressed ? 0.7 : 1 },
+              ]}
+            >
+              <Text numberOfLines={1} style={{ color: auth.session ? colors.text : colors.textMuted, fontSize: 12.5, fontWeight: '700', maxWidth: 120 }}>
+                {auth.session ? auth.displayName || auth.account : '未登录'}
+              </Text>
+            </Pressable>
+          }
+        />
       </FadeInUp>
 
       {/* 外观：主题色 + 深浅模式，直接内联操作 */}
+      <FadeInUp runId={runId} delayMs={60}>
       <SectionTitle title="外观" />
       <Card style={{ gap: 14 }}>
         <View>
@@ -207,9 +241,26 @@ export default function MineScreen() {
             <Chip label="浅色" active={s.themeMode === 'light'} onPress={() => void app.setSettings({ themeMode: 'light' })} />
             <Chip label="深色" active={s.themeMode === 'dark'} onPress={() => void app.setSettings({ themeMode: 'dark' })} />
           </View>
+          {bgDriven ? (
+            <Text style={{ color: colors.textMuted, fontSize: 11.5, lineHeight: 17, marginTop: 8 }}>
+              已启用自定义背景，深浅模式由背景明暗自动决定（当前{mode === 'dark' ? '深色' : '浅色'}）。切回「跟随主题」背景即可手动切换。
+            </Text>
+          ) : null}
         </View>
+        <Row
+          label="背景与外观"
+          hint="纯色 / 渐变 / 自定义图片"
+          value={BG_MODE_LABELS[s.bgMode]}
+          chevron
+          onPress={() => openSheet('background')}
+        />
+        <Row label="触感反馈" hint="按钮、开关与打开二级菜单时的震动">
+          <Toggle on={s.hapticsEnabled === 1} onChange={(v) => void app.setSettings({ hapticsEnabled: v ? 1 : 0 })} />
+        </Row>
       </Card>
+      </FadeInUp>
 
+      <FadeInUp runId={runId} delayMs={120}>
       <SectionTitle title="课表与作息" />
       <Card style={{ paddingVertical: 4 }}>
         <Row label="课程管理" value={`${app.courses.length} 门`} chevron onPress={() => openSheet('course')} />
@@ -218,14 +269,18 @@ export default function MineScreen() {
         <Row label="校历与调课" value={`${app.events.length} 条安排`} chevron onPress={() => openSheet('calendar')} />
         <Row label="学期数据统计" value={`${app.courses.length} 门课`} chevron onPress={() => openSheet('stats')} />
       </Card>
+      </FadeInUp>
 
+      <FadeInUp runId={runId} delayMs={180}>
       <SectionTitle title="学习辅助" />
       <Card style={{ paddingVertical: 4 }}>
         <Row label="考试安排" value={`${app.exams.length} 场`} chevron onPress={() => openSheet('exam')} />
         <Row label="作业管理" value={`未完成 ${app.homework.filter((h) => h.done === 0).length} 项`} chevron onPress={() => openSheet('homework')} />
         <Row label="新增课程" value="手动排课" chevron onPress={() => router.push('/detail/course-edit')} />
       </Card>
+      </FadeInUp>
 
+      <FadeInUp runId={runId} delayMs={240}>
       <SectionTitle title="提醒" />
       <Card style={{ paddingVertical: 4 }}>
         <Row label="上课提醒" value={`前 ${s.classRemindMinutes} 分钟`} chevron onPress={() => openSheet('remind')} />
@@ -233,29 +288,39 @@ export default function MineScreen() {
           <Toggle on={s.examRemindOn === 1} onChange={(v) => void app.setSettings({ examRemindOn: v ? 1 : 0 })} />
         </Row>
       </Card>
+      </FadeInUp>
 
+      <FadeInUp runId={runId} delayMs={300}>
       <SectionTitle title="天气与生活建议" />
       <Card style={{ paddingVertical: 4 }}>
         <Row label="天气城市" hint="今日预览显示气温与带伞建议" value={app.settings.weatherCity ? undefined : '未设置'} chevron onPress={() => openSheet('weather')} />
       </Card>
+      </FadeInUp>
 
+      <FadeInUp runId={runId} delayMs={360}>
       <SectionTitle title="账号与云同步" />
       <Card style={{ paddingVertical: 4 }}>
-        <Row label="账号登录 / 注册" hint="手机号 + 密码" value={auth.phone ? `${auth.phone.slice(0, 3)}****${auth.phone.slice(7)}` : '未登录'} chevron onPress={() => (auth.session ? undefined : router.push('/auth'))} />
+        <Row label="账号登录 / 注册" hint="学号或账号 + 密码" value={auth.session ? auth.displayName || auth.account : '未登录'} chevron onPress={() => openSheet('account')} />
         <Row label="班级课表云同步" hint="管理员上传 · 同学拉取" chevron onPress={() => openSheet('cloud')} />
       </Card>
+      </FadeInUp>
 
+      <FadeInUp runId={runId} delayMs={420}>
       <SectionTitle title="数据" />
       <Card style={{ paddingVertical: 4 }}>
         <Row label="备份 / 恢复 / 导出" value="全本地" chevron onPress={() => openSheet('data')} />
       </Card>
+      </FadeInUp>
 
+      <FadeInUp runId={runId} delayMs={480}>
       <SectionTitle title="关于" />
       <Card style={{ paddingVertical: 4 }}>
         <Row label="关于软件" hint="开发人员与版本信息" chevron onPress={() => openSheet('about')} />
         <Row label="检查更新" hint="从开源仓库获取最新版本" chevron onPress={() => openSheet('update')} />
       </Card>
+      </FadeInUp>
 
+      <FadeInUp runId={runId} delayMs={540}>
       <View style={{ height: 16 }} />
       {!app.semester ? (
         <Button label="载入示例课表快速体验" variant="secondary" onPress={() => void app.seedSample().catch((e) => console.warn('[mine] 示例载入失败', e))} />
@@ -263,6 +328,7 @@ export default function MineScreen() {
       <Text style={{ color: colors.textMuted, fontSize: 11.5, lineHeight: 18, marginTop: 20, textAlign: 'center' }}>
         课表数据默认仅保存在本机 SQLite，断网完全可用；班级云同步为手动操作——管理员主动上传、同学主动拉取时才经过云端。{Platform.OS === 'web' ? '（网页预览用于查看界面，通知提醒需在手机安装包体验）' : notificationPermissionHint()}
       </Text>
+      </FadeInUp>
       </Screen>
     );
   }
@@ -293,6 +359,7 @@ const styles = StyleSheet.create({
   },
   accentDotActive: { transform: [{ scale: 1.08 }] },
   cityGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
+  userChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1, marginBottom: 2 },
 });
 
 function SheetHost({ sheet, onClose, closeNow }: { sheet: Sheet; onClose: () => void; closeNow: () => void }) {
@@ -308,8 +375,10 @@ function SheetHost({ sheet, onClose, closeNow }: { sheet: Sheet; onClose: () => 
     case 'homework': return <HomeworkPanel onClose={onClose} />;
     case 'weather': return <WeatherSheet onClose={onClose} />;
     case 'cloud': return <CloudClassPanel onClose={onClose} />;
+    case 'account': return <AccountPanel onClose={onClose} />;
     case 'update': return <UpdatePanel onClose={onClose} />;
     case 'about': return <AboutSheet onClose={onClose} />;
+    case 'background': return <BackgroundSheet onClose={onClose} />;
     default: return null;
   }
 }
@@ -632,34 +701,61 @@ function DataSheet({ onClose }: { onClose: () => void }) {
   async function doImportTimetable() {
     setBusy(true);
     try {
-      const plan = await pickAndParseTimetable();
-      if (!plan) {
-        Alert.alert('导入失败', '未选择文件，或该文件不是可识别的周课表格式（需包含「第 N 周」分块与「课程名\\n教室 · 教师」格子）');
+      const picked = await pickAndParseTimetable();
+      if (picked.status === 'canceled') return;
+      if (picked.status === 'error') {
+        console.warn(`[mine] 周课表导入失败：${picked.message}`);
+        Alert.alert('导入失败', `${picked.message}\n\n请确认文件是「按周课表」格式的 Excel：每周一块「第 N 周」标题行 + 「节次 / 时间」两列 + 周一至周日七列，格子内容为「课程名（换行）教室 · 教师」。`);
         return;
       }
-      const detail =
-        `学期：${plan.semesterName}\n` +
-        `开学：${plan.startDate}（第 1 周周一），共 ${plan.totalWeeks} 周\n` +
-        `作息：${plan.periods.length} 节课\n` +
-        `课程：${plan.courses.length} 条\n\n` +
-        (plan.warnings.length > 0 ? `注意：\n${plan.warnings.slice(0, 5).join('\n')}${plan.warnings.length > 5 ? `\n…等 ${plan.warnings.length} 条` : ''}\n\n` : '') +
-        '将新建该学期并设为当前，同时覆盖作息表。原有学期数据保留，可在学期管理里切换或删除。确定导入吗？';
-      Alert.alert('确认导入课表', detail, [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '导入',
-          onPress: () => {
-            console.info(`[mine] 开始导入周课表「${plan.fileName}」`);
-            void applyTimetablePlan(plan)
-              .then(() => app.refresh())
-              .then(() => Alert.alert('导入成功', `已导入《${plan.semesterName}》：${plan.courses.length} 条课程安排`))
-              .catch((e) => { console.warn('[mine] 周课表导入落库失败', e); Alert.alert('提示', '导入失败，现有数据未受影响，请重试'); });
-          },
-        },
-      ]);
+      confirmImportPlan(picked.plan);
     } finally {
       setBusy(false);
     }
+  }
+
+  /** 从剪贴板导入：读取复制的表格文本 → 解析 → 预览确认 */
+  async function doImportFromClipboard() {
+    setBusy(true);
+    try {
+      const text = await Clipboard.getStringAsync();
+      const parsed = parseTimetableText(text);
+      if (parsed.status === 'error') {
+        console.warn(`[mine] 剪贴板课表导入失败：${parsed.message}`);
+        Alert.alert('导入失败', parsed.message);
+        return;
+      }
+      confirmImportPlan(parsed.plan);
+    } catch (e) {
+      console.warn('[mine] 读取剪贴板失败', e);
+      Alert.alert('提示', '读取剪贴板失败，请重试或改用「导入课表（Excel）」');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** 解析结果确认弹窗：展示学期/作息/课程统计与警告，确认后落库 */
+  function confirmImportPlan(plan: TimetablePlan) {
+    const detail =
+      `学期：${plan.semesterName}\n` +
+      `开学：${plan.startDate}（第 1 周周一），共 ${plan.totalWeeks} 周\n` +
+      `作息：${plan.periods.length} 节课\n` +
+      `课程：${plan.courses.length} 条\n\n` +
+      (plan.warnings.length > 0 ? `注意：\n${plan.warnings.slice(0, 5).join('\n')}${plan.warnings.length > 5 ? `\n…等 ${plan.warnings.length} 条` : ''}\n\n` : '') +
+      '将新建该学期并设为当前，同时覆盖作息表。原有学期数据保留，可在学期管理里切换或删除。确定导入吗？';
+    Alert.alert('确认导入课表', detail, [
+      { text: '取消', style: 'cancel' },
+      {
+        text: '导入',
+        onPress: () => {
+          console.info(`[mine] 开始导入周课表「${plan.fileName}」`);
+          void applyTimetablePlan(plan)
+            .then(() => app.refresh())
+            .then(() => Alert.alert('导入成功', `已导入《${plan.semesterName}》：${plan.courses.length} 条课程安排`))
+            .catch((e) => { console.warn('[mine] 周课表导入落库失败', e); Alert.alert('提示', '导入失败，现有数据未受影响，请重试'); });
+        },
+      },
+    ]);
   }
 
   /** 强制把内置默认课表（2603025 班）覆盖写入当前数据 */
@@ -682,11 +778,39 @@ function DataSheet({ onClose }: { onClose: () => void }) {
     ]);
   }
 
+  /** 诊断：把解析过程的中间结果直接展示出来，定位「导入失败」卡在哪一步 */
+  async function doDiagnoseTimetable() {
+    setBusy(true);
+    try {
+      const diag = await diagnoseTimetableFile();
+      if (!diag) return;
+      const lines = [
+        `文件：${diag.fileName}`,
+        `工作表：${diag.sheetName || '（未读到）'}`,
+        `总行数：${diag.rowCount}　合并区域：${diag.mergeCount}`,
+        `「第 N 周」块：${diag.weekBlocks} 个`,
+        `节次行：${diag.periodRows} 行`,
+        `识别作息：${diag.periods} 节`,
+        `课程格子：${diag.courseCells} 个`,
+        `解析课程：${diag.courses} 条`,
+      ];
+      if (diag.error) lines.push('', `失败原因：${diag.error}`);
+      if (diag.warnings.length > 0) lines.push('', `警告 ${diag.warnings.length} 条：`, ...diag.warnings.slice(0, 3));
+      console.info(`[mine] 课表诊断结果：${JSON.stringify({ ...diag, warnings: diag.warnings.length })}`);
+      Alert.alert(diag.error ? '诊断：解析失败' : '诊断：解析通过', lines.join('\n'));
+    } catch (e) {
+      console.warn('[mine] 课表诊断异常', e);
+      Alert.alert('诊断失败', e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   /** 下载内置 Excel 课表模板（随 App 打包，不经过云端） */
   function doDownloadTemplate() {
     setBusy(true);
     void shareTemplate()
-      .then((r) => Alert.alert(r.ok ? '模板已就绪' : '导出失败', `${r.message}\n按模板填好课程后用「导入周课表 (Excel)」导入`))
+      .then((r) => Alert.alert(r.ok ? '模板已就绪' : '导出失败', `${r.message}\n按模板填好课程后用「导入课表（Excel）」导入`))
       .finally(() => setBusy(false));
   }
 
@@ -696,12 +820,14 @@ function DataSheet({ onClose }: { onClose: () => void }) {
       {/* Excel 模板下载提示：引导用户用 AI 按模板格式写课表后再导入 */}
       <View style={[styles.tipBox, { backgroundColor: colors.primarySoft, borderColor: colors.border }]}>
         <Text style={{ color: colors.primary, fontSize: 12.5, lineHeight: 19, fontWeight: '600' }}>
-          提示：下载模板后，可以把模板交给 AI，让 AI 按模板格式把课表写进去，再用下方「导入周课表 (Excel)」一键导入。
+          提示：下载模板后，可以把模板交给 AI，让 AI 按模板格式把课表写进去，再用下方「导入课表（Excel）」一键导入。
         </Text>
       </View>
       <View style={styles.exportGrid}>
         <Button label="Excel 模板下载" variant="secondary" disabled={busy} onPress={() => doDownloadTemplate()} />
-        <Button label="导入周课表 (Excel)" variant="secondary" disabled={busy} onPress={() => void doImportTimetable()} />
+        <Button label="导入课表（Excel）" variant="secondary" disabled={busy} onPress={() => void doImportTimetable()} />
+        <Button label="从剪贴板导入" variant="secondary" disabled={busy} onPress={() => void doImportFromClipboard()} />
+        <Button label="导入诊断" variant="secondary" disabled={busy} onPress={() => void doDiagnoseTimetable()} />
         <Button label="设置为默认课表" variant="secondary" disabled={busy} onPress={() => doRestoreDefault()} />
         <Button label="导出 JSON 备份" variant="secondary" disabled={busy} onPress={() => void doExport('json')} />
         <Button label="导出 Excel(CSV)" variant="secondary" disabled={busy} onPress={() => void doExport('csv')} />
@@ -709,6 +835,10 @@ function DataSheet({ onClose }: { onClose: () => void }) {
         <Button label="从备份文件恢复" disabled={busy} onPress={() => void doImport()} />
       </View>
       <Text style={{ color: colors.textMuted, fontSize: 11.5, lineHeight: 18, marginTop: 12 }}>
+        导入课表支持 .xlsx / .xls，选完自动解析并弹确认框；时间列兼容 08:45-09:15、8:45~9:15、08:45－09:15 等写法。
+        「从剪贴板导入」适用于别人发来的课表：先在聊天里复制表格内容，再点这里。
+      </Text>
+      <Text style={{ color: colors.textMuted, fontSize: 11.5, lineHeight: 18, marginTop: 8 }}>
         {Platform.OS === 'web' ? '网页预览下导出为浏览器下载；手机端通过系统分享面板保存到文件或发送。' : '导出文件包含全部本地数据，请妥善保管。'}
       </Text>
       <Button label="返回" variant="ghost" onPress={onClose} style={{ marginTop: 10 }} />
@@ -852,7 +982,7 @@ function AboutSheet({ onClose }: { onClose: () => void }) {
           onError={(e) => console.warn('[about] 图标加载失败:', (e.nativeEvent as { error?: string })?.error ?? 'unknown')}
         />
         <Text style={{ color: colors.text, fontSize: 20, fontWeight: '800' }}>课程表</Text>
-        <Text style={{ color: colors.textMuted, fontSize: 12.5, marginTop: 4 }}>版本 1.0.0</Text>
+        <Text style={{ color: colors.textMuted, fontSize: 12.5, marginTop: 4 }}>版本 {CURRENT_VERSION}</Text>
       </Card>
 
       <Card style={{ paddingVertical: 4, marginTop: 12 }}>

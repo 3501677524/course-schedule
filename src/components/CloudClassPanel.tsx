@@ -22,6 +22,12 @@ function maskPhone(p: string): string {
   return p.length === 11 ? `${p.slice(0, 3)}****${p.slice(7)}` : p;
 }
 
+/** 展示名：优先用户名，其次登录账号（老数据里 uploaderName 可能是手机号，仍走脱敏） */
+function displayOf(name: string, account: string): string {
+  if (name) return name;
+  return account ? maskPhone(account) : '未知用户';
+}
+
 function fmtTime(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
@@ -31,7 +37,7 @@ function fmtTime(iso: string): string {
 export function CloudClassPanel({ onClose }: { onClose: () => void }) {
   const { colors } = useTheme();
   const app = useApp();
-  const { session, phone, authReady } = useAuth();
+  const { session, account, displayName, authReady } = useAuth();
 
   const [cls, setCls] = useState<ClassInfo | null>(null);
   const [meta, setMeta] = useState<CloudSnapshotMeta | null>(null);
@@ -155,7 +161,7 @@ export function CloudClassPanel({ onClose }: { onClose: () => void }) {
         <Card>
           <Text style={[styles.title, { color: colors.text }]}>班级云同步</Text>
           <Text style={[styles.desc, { color: colors.textMuted }]}>
-            当前未登录。在「我的 → 账号登录/注册」用手机号登录后，即可加入班级、拉取管理员发布的课表。
+            当前未登录。在「我的 → 账号登录/注册」用学号或账号登录后，即可加入班级、拉取管理员发布的课表。
           </Text>
         </Card>
         <Button label="返回" variant="ghost" onPress={onClose} style={{ marginTop: 14 }} />
@@ -168,7 +174,7 @@ export function CloudClassPanel({ onClose }: { onClose: () => void }) {
       <Card>
       <View style={styles.headRow}>
         <Text style={[styles.title, { color: colors.text }]}>班级云同步</Text>
-        <Chip label={`已登录 ${maskPhone(phone)}`} onPress={doSignOut} />
+        <Chip label={`已登录 ${displayOf(displayName, account)}`} onPress={doSignOut} />
       </View>
 
       {!cls ? (

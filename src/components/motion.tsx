@@ -32,11 +32,35 @@ const AnimatedCircle = Animated.createAnimatedComponent(Circle);
  *  因此这里不做任何条件包裹，FadeInUp/PageFade 也不再自行调用，改由页面把 runId 作为 prop 下发。 */
 export function useReplayId(): number {
   const [runId, setRunId] = useState(0);
-  const replay = useCallback(() => {
-    console.info('[motion] 屏幕重新聚焦，进场动画重播（runId+1）');
-    setRunId((n) => n + 1);
-  }, []);
-  useFocusEffect(replay);
+  // ⚠️ 「切 Tab 有概率播两次进场动画」的根因：expo-router 的 useFocusEffect 在 screen
+  // 首次挂载与首次聚焦时会各执行一次 effect，加上页面内其它 useFocusEffect 的 cleanup
+  // 触发额外渲染，runId 在一次切换里可能 +2 → FadeInUp 的 key 变化两次 → 动画重播两次。
+  // 修复：同一屏幕在很短时间窗内的重复聚焦只计一次（正常切 Tab 间隔远大于该窗口）。
+  const lastReplayAt = useRef(0);
+  // ⚠️ 300ms 时间窗去重仍会漏：Tab 切换的 focus 事件与页面内其它 useFocusEffect 的
+  // cleanup 重渲染可能相隔超过 300ms（低端机、页面内容多时尤其明显），runId 照样 +2。
+  // 改为「聚焦代数」去重：每次真正离开屏幕（blur）才把代数 +1，聚焦时若代数与上次
+  // 重播时相同，说明是同一次聚焦的重复回调，直接跳过。这样无论重复回调间隔多久都只播一次。
+  const focusGen = useRef(0);
+  const replayedGen = useRef(-1);
+  useFocusEffect(
+    useCallback(() => {
+      const gen = focusGen.current;
+      if (replayedGen.current === gen) {
+        console.info('[motion] 同一次聚焦的重复回调，跳过重播');
+        return () => {
+          focusGen.current += 1;
+        };
+      }
+      replayedGen.current = gen;
+      lastReplayAt.current = Date.now();
+      console.info('[motion] 屏幕重新聚焦，进场动画重播（runId+1）');
+      setRunId((n) => n + 1);
+      return () => {
+        focusGen.current += 1;
+      };
+    }, []),
+  );
   return runId;
 }
 

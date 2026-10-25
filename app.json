@@ -2,7 +2,7 @@
   "expo": {
     "name": "课程表",
     "slug": "course-schedule",
-    "version": "1.0.0",
+    "version": "2.5.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,

@@ -2,6 +2,7 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { useColorScheme } from 'react-native';
 import type { AccentKey, AppSettings } from '@/types';
+import { BG_PALETTES, cardTintFromPalette, findGradient, paletteFromImage, paletteFromSolid, type BgPalette } from './AppBackground';
 
 export interface ThemeColors {
   bg: string;
@@ -112,34 +113,74 @@ interface ThemeValue {
   mode: 'light' | 'dark';
   accent: AccentKey;
   colors: ThemeColors;
+  /** 当前主题色是否由自定义背景驱动（此时「显示模式」被背景锁定） */
+  bgDriven: boolean;
 }
 
 const ThemeContext = createContext<ThemeValue>({
   mode: 'light',
   accent: 'inkGreen',
   colors: { ...neutralLight, ...PALETTES.inkGreen.light },
+  bgDriven: false,
 });
 
+/** 由背景推导主题色板：渐变按预设色系、纯色按背景色、图片按明暗倾向。
+ *  ⚠️ 这是「用了蓝色渐变但开关还是绿色」的修复点：自定义背景时强调色不再取 accentColor，
+ *  而是取背景主色，开关/进度条/英雄区/卡片描边全部跟着背景走。 */
+function paletteFromBackground(
+  bg: Pick<AppSettings, 'bgMode' | 'bgColor' | 'bgGradient' | 'bgThemeKey' | 'bgImageMode'>,
+  mode: 'light' | 'dark',
+): BgPalette | null {
+  if (bg.bgMode === 'solid' && bg.bgColor) return paletteFromSolid(bg.bgColor);
+  if (bg.bgMode === 'gradient') {
+    const preset = findGradient(bg.bgGradient);
+    const key = bg.bgThemeKey === 'auto' ? preset.key : bg.bgThemeKey;
+    const entry = BG_PALETTES[key] ?? BG_PALETTES[preset.key] ?? BG_PALETTES.aurora;
+    return mode === 'dark' ? entry.dark : entry.light;
+  }
+  if (bg.bgMode === 'image') return paletteFromImage(bg.bgImageMode);
+  return null;
+}
+
 export function ThemeProvider({
-  children, themeMode, accent,
+  children, themeMode, accent, background,
 }: {
   children: ReactNode;
   themeMode: AppSettings['themeMode'];
   accent: AccentKey;
+  /** 自定义背景设置：非「跟随主题」时由背景决定强调色与深浅模式 */
+  background?: Pick<AppSettings, 'bgMode' | 'bgColor' | 'bgGradient' | 'bgThemeKey' | 'bgImageMode'>;
 }) {
   const system = useColorScheme();
   const value = useMemo<ThemeValue>(() => {
-    const mode: 'light' | 'dark' =
+    const systemMode: 'light' | 'dark' =
       themeMode === 'system' ? (system === 'dark' ? 'dark' : 'light') : themeMode;
+    const bgPalette = background ? paletteFromBackground(background, systemMode) : null;
+    // 自定义背景时：深浅模式由背景明暗决定（浅色背景配深色文字，反之亦然），
+    // 强调色取背景主色 —— 用户不必再手动切「浅色/深色」，也不会出现蓝背景配绿开关。
+    const mode: 'light' | 'dark' = bgPalette ? bgPalette.mode : systemMode;
     const palette = PALETTES[accent] ?? PALETTES.inkGreen;
-    return {
-      mode,
-      accent,
-      colors: mode === 'dark'
-        ? { ...neutralDark, ...palette.dark }
-        : { ...neutralLight, ...palette.light },
-    };
-  }, [themeMode, accent, system]);
+    const base = mode === 'dark' ? neutralDark : neutralLight;
+    const colors: ThemeColors = bgPalette
+      ? {
+          ...base,
+          primary: bgPalette.primary,
+          primarySoft: bgPalette.primarySoft,
+          heroFrom: bgPalette.heroFrom,
+          heroTo: bgPalette.heroTo,
+          accent: bgPalette.accent,
+          onPrimary: bgPalette.onPrimary,
+          // 卡片/描边也带背景色系，避免「背景是极光青、卡片却是灰白」的割裂感
+          ...cardTintFromPalette(bgPalette, base.card),
+        }
+      : { ...base, ...(mode === 'dark' ? palette.dark : palette.light) };
+    // 关键日志：确认背景驱动是否生效、强调色与卡片色实际取到了什么（排查「极光渐变卡片还是绿色」）
+    console.info(
+      `[theme] 背景驱动=${bgPalette !== null} 模式=${mode} 强调色=${colors.primary} 卡片=${colors.card}`
+      + (bgPalette ? `（背景色板 primary=${bgPalette.primary}）` : `（accentColor=${accent}）`),
+    );
+    return { mode, accent, colors, bgDriven: bgPalette !== null };
+  }, [themeMode, accent, system, background]);
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 

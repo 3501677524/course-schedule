@@ -18,9 +18,13 @@ export function FirstRunGate() {
   const [checked, setChecked] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  // ⚠️ 老用户「一闪而逝看到用户须知」的根因：AppDataProvider 初始 state 用 DEFAULT_SETTINGS
+  // （agreementAccepted=0），门控在 loading 期间就按默认值判定「需要同意协议」并整屏渲染，
+  // 等异步 load() 读到真实值 1 才卸载 → 老用户看到门控闪一下。
+  // 修复：数据未加载完时一律不渲染门控，等真实 settings 到位后再判断。
   const needAgreement = app.settings.agreementAccepted !== 1;
   const needGuide = !needAgreement && app.settings.guideSeen !== 1;
-  const active = needAgreement || needGuide;
+  const active = !app.loading && (needAgreement || needGuide);
 
   // 门控期间拦截 Android 硬件返回键，避免用户退到空白页
   useEffect(() => {

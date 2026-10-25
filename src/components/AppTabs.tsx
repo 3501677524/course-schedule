@@ -3,6 +3,7 @@ import { Tabs } from 'expo-router';
 import type { ColorValue, ViewStyle } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useTheme } from './theme';
+import { useBackgroundBaseColor } from './AppBackground';
 import { IconPop } from './motion';
 
 function TabIcon({ d, color, size = 24 }: { d: string; color: ColorValue; size?: number }) {
@@ -28,7 +29,8 @@ const tabOptions = (options: Record<string, unknown>) => options as never;
 
 export function AppTabs() {
   const { colors } = useTheme();
-  const bg = colors.bg;
+  // 自定义背景（纯色/渐变/图片）时，原生容器层要铺背景代表色，否则过渡瞬间露白
+  const bg = useBackgroundBaseColor();
   console.info(`[tabs] Tab 原生容器底色已应用：${bg}（深色切页白闪修复）`);
   return (
     <Tabs

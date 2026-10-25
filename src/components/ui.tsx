@@ -5,6 +5,19 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from './theme';
 import { SpringPressable } from './motion';
+import { useApp } from '@/hooks/useAppData';
+
+/** 触感反馈统一入口：受「我的 → 触感反馈」开关控制。
+ *  ⚠️ 不能在模块顶层读设置（Hook 必须在组件内），故用轻量 hook 取当前值；
+ *  关闭后所有按钮/开关/行项点击都不再震动。 */
+function useHaptic() {
+  const { settings } = useApp();
+  const enabled = settings.hapticsEnabled === 1;
+  return () => {
+    if (!enabled) return;
+    void Haptics.selectionAsync().catch(() => undefined);
+  };
+}
 
 export function Card({ children, style }: { children: ReactNode; style?: object }) {
   const { colors, mode } = useTheme();
@@ -63,6 +76,7 @@ export function Button({
   style?: object;
 }) {
   const { colors } = useTheme();
+  const haptic = useHaptic();
   const map = {
     primary: { bg: colors.primary, fg: colors.onPrimary },
     secondary: { bg: colors.primarySoft, fg: colors.primary },
@@ -74,7 +88,7 @@ export function Button({
       disabled={disabled}
       onPress={() => {
         if (disabled) return;
-        void Haptics.selectionAsync().catch(() => undefined);
+        haptic();
         onPress();
       }}
       style={[styles.button, { backgroundColor: map.bg }, style]}
@@ -126,6 +140,7 @@ export function Row({
   hintStyle?: object;
 }) {
   const { colors } = useTheme();
+  const haptic = useHaptic();
   const content = (
     <View style={[styles.row, { borderBottomColor: colors.border }]}>
       <View style={{ flex: 1, flexShrink: 1 }}>
@@ -153,7 +168,7 @@ export function Row({
   return (
     <SpringPressable
       onPress={() => {
-        void Haptics.selectionAsync().catch(() => undefined);
+        haptic();
         onPress();
       }}
       style={{ width: '100%' }}
@@ -189,6 +204,7 @@ export function Loading({ text }: { text?: string }) {
 
 export function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   const { colors } = useTheme();
+  const haptic = useHaptic();
   const knob = useRef(new Animated.Value(on ? 1 : 0)).current;
   useEffect(() => {
     Animated.timing(knob, {
@@ -204,7 +220,7 @@ export function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) =
       accessibilityState={{ checked: on }}
       onPress={() => {
         console.info(`[ui] Toggle 点击生效：${on ? '开→关' : '关→开'}`);
-        void Haptics.selectionAsync().catch(() => undefined);
+        haptic();
         onChange(!on);
       }}
       style={[styles.toggle, { backgroundColor: on ? colors.primary : colors.cardSoft, borderColor: on ? colors.primary : colors.border }]}

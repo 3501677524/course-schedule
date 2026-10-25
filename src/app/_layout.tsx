@@ -117,13 +117,24 @@ import { StatusBar } from 'expo-status-bar';
 import { NavigationBar } from 'expo-navigation-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { FirstRunGate } from '@/components/FirstRunGate';
+import { AppBackground, useBackgroundBaseColor } from '@/components/AppBackground';
 
 function RootStack() {
   const { settings } = useApp();
   // 已按需求彻底删除应用内开屏/启动屏驻留逻辑：不再 preventAutoHideAsync/hideAsync 门控，
   // 冷启动直接由构建器注入的原生闪屏过渡到 JS 首帧；深色切 Tab 白闪由 contentStyle 解决。
   return (
-    <ThemeProvider themeMode={settings.themeMode} accent={settings.accentColor}>
+    <ThemeProvider
+      themeMode={settings.themeMode}
+      accent={settings.accentColor}
+      background={{
+        bgMode: settings.bgMode,
+        bgColor: settings.bgColor,
+        bgGradient: settings.bgGradient,
+        bgThemeKey: settings.bgThemeKey,
+        bgImageMode: settings.bgImageMode,
+      }}
+    >
       <ThemedShell />
     </ThemeProvider>
   );
@@ -136,7 +147,10 @@ function RootStack() {
  *  与根 View 同时上色；Android 三键导航条用 SDK 56 声明式 <NavigationBar style>。 */
 function ThemedShell() {
   const { colors, mode } = useTheme();
-  console.info(`[theme-shell] 容器底色=${colors.bg}，模式=${mode}`);
+  // 自定义背景的「代表色」：原生容器层（GestureHandlerRootView / Stack contentStyle）
+  // 必须铺这个色，否则渐变/纯色背景下过渡瞬间仍会露出白色 Surface。
+  const baseColor = useBackgroundBaseColor();
+  console.info(`[theme-shell] 容器底色=${baseColor}，模式=${mode}`);
   return (
     // ⚠️ GestureHandlerRootView 必须是**带底色的最外层原生容器**：它包在 AppDataProvider
     // 之外、是整个 RN 视图树的根，此前只有 flex:1 而没有 backgroundColor——在 Android 上
@@ -144,11 +158,14 @@ function ThemedShell() {
     // mine screen 的内容被整屏替换，只要有一帧 JS 还没绘制完 colors.bg，透出来的就是
     // 这层白 → 表现为「深色模式点二级菜单还是闪一下白」。把它挪进 ThemedShell 内部并
     // 铺 colors.bg，从物理上消除这块白色表面。
-    <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bg }}>
-      <View style={{ flex: 1, backgroundColor: colors.bg }}>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: baseColor }}>
+      <View style={{ flex: 1, backgroundColor: baseColor }}>
+        {/* 全局自定义背景层：铺在 Stack 之下，所有页面（含 Tabs）共享同一张背景。
+            页面内 Screen 也各自铺了一层，保证滚动内容与背景一致。 */}
+        <AppBackground />
         <StatusBar style="auto" />
         {Platform.OS === 'android' ? <NavigationBar style={mode === 'dark' ? 'light' : 'dark'} /> : null}
-        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }} />
+        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
         {/* 首次启动门控：未同意协议 / 未看指南时整屏覆盖在 Stack 之上（铺主题底色，深色不闪白） */}
         <FirstRunGate />
       </View>

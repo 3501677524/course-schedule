@@ -453,11 +453,21 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultTimetableSeeded: 0,
   agreementAccepted: 0,
   guideSeen: 0,
+  hapticsEnabled: 1,
+  bgMode: 'theme',
+  bgColor: '',
+  bgGradient: 'aurora',
+  bgImageUri: '',
+  bgDim: 30,
+  bgThemeKey: 'auto',
+  bgImageMode: 'dark',
 };
 
 const ACCENT_KEYS: AppSettings['accentColor'][] = [
   'inkGreen', 'graphiteBlue', 'duskPurple', 'warmAmber', 'celadon', 'wineRed',
 ];
+
+const BG_MODES: AppSettings['bgMode'][] = ['theme', 'solid', 'gradient', 'image'];
 
 export async function loadSettings(): Promise<AppSettings> {
   const db = await initDatabase();
@@ -478,6 +488,16 @@ export async function loadSettings(): Promise<AppSettings> {
     defaultTimetableSeeded: num(map.get('defaultTimetableSeeded'), DEFAULT_SETTINGS.defaultTimetableSeeded),
     agreementAccepted: num(map.get('agreementAccepted'), DEFAULT_SETTINGS.agreementAccepted),
     guideSeen: num(map.get('guideSeen'), DEFAULT_SETTINGS.guideSeen),
+    hapticsEnabled: num(map.get('hapticsEnabled'), DEFAULT_SETTINGS.hapticsEnabled),
+    bgMode: (BG_MODES.includes(str(map.get('bgMode')) as AppSettings['bgMode'])
+      ? (str(map.get('bgMode')) as AppSettings['bgMode'])
+      : DEFAULT_SETTINGS.bgMode),
+    bgColor: str(map.get('bgColor'), ''),
+    bgGradient: str(map.get('bgGradient'), DEFAULT_SETTINGS.bgGradient),
+    bgImageUri: str(map.get('bgImageUri'), ''),
+    bgDim: num(map.get('bgDim'), DEFAULT_SETTINGS.bgDim),
+    bgThemeKey: str(map.get('bgThemeKey'), DEFAULT_SETTINGS.bgThemeKey),
+    bgImageMode: (str(map.get('bgImageMode')) === 'light' ? 'light' : 'dark'),
   };
 }
 

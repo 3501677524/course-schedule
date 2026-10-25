@@ -53,6 +53,9 @@ src/
 
 ## 📦 发布记录
 
+- **v2.5.0**：自定义背景（纯色 / 渐变 / 图片）、主题色跟随背景、触感反馈总开关、新版 Excel 模板，[Android](https://github.com/3501677524/course-schedule/releases/download/v2.5.0/app-release-v3007.apk) / [iOS](https://github.com/3501677524/course-schedule/releases/download/v2.5.0/app-ios-release-v3007.ipa)
+- **v2.1.0**：Excel 导入全面兼容修复、导入诊断、剪贴板导入、导入确认弹窗，[Android](https://github.com/3501677524/course-schedule/releases/download/v2.1.0/app-release-v2900.apk) / [iOS](https://github.com/3501677524/course-schedule/releases/download/v2.1.0/app-ios-release-v2900.ipa)
+- **v2.0.0**：双端新版本，[Android](https://github.com/3501677524/course-schedule/releases/download/v2.0.0/app-release-v2302.apk) / [iOS](https://github.com/3501677524/course-schedule/releases/download/v2.0.0/app-ios-release-v2302.ipa)
 - **v1.8.0**：首个公开 Release，包含 Android 安装包 [app-release-v1800.apk](https://github.com/3501677524/course-schedule/releases/download/v1.8.0/app-release-v1800.apk)
 
 ## ⚠️ 注意

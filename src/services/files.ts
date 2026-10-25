@@ -75,3 +75,25 @@ export function ringtoneExists(uri: string): boolean {
     return false;
   }
 }
+
+/** 选择本地图片作为 App 背景，返回持久化后的 uri（复制到 document 目录防缓存清理）。
+ *  ⚠️ 用 DocumentPicker 而非 ImagePicker：固定壳下 ImagePicker 需要相册权限声明，
+ *  而 DocumentPicker 走系统文件选择器，无需额外权限，且能同时选到相册导出的图片。 */
+export async function pickBackgroundImage(): Promise<string | null> {
+  try {
+    const result = await DocumentPicker.getDocumentAsync({ type: ['image/*'], copyToCacheDirectory: true });
+    if (result.canceled || !result.assets || result.assets.length === 0) return null;
+    const picked = result.assets[0];
+    if (Platform.OS === 'web') return picked.uri;
+    const src = new File(picked.uri);
+    const ext = (src.name.split('.').pop() ?? 'jpg').toLowerCase();
+    const dest = new File(Paths.document, `bg_${Date.now()}.${ext}`);
+    if (dest.exists) dest.delete();
+    src.copy(dest);
+    console.info(`[files] 背景图片已持久化：${dest.uri}`);
+    return dest.uri;
+  } catch (error) {
+    console.warn('[files] 背景图片选择失败', error);
+    return null;
+  }
+}

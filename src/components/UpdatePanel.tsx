@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { ActivityIndicator, Alert, Text, View } from 'react-native';
 import { Button, Card } from './ui';
 import { useTheme } from './theme';
-import { CURRENT_VERSION, checkForUpdate, openUpdatePage, type UpdateInfo } from '@/services/updateCheck';
+import { BUILD_ID, CURRENT_VERSION, checkForUpdate, openUpdatePage, type UpdateInfo } from '@/services/updateCheck';
 
 export function UpdatePanel({ onClose }: { onClose: () => void }) {
   const { colors } = useTheme();
@@ -28,8 +28,9 @@ export function UpdatePanel({ onClose }: { onClose: () => void }) {
   }
 
   async function goDownload() {
-    const url = info?.pageUrl ?? '';
+    const url = info?.downloadUrl || info?.pageUrl || '';
     if (!url) return;
+    console.info(`[update] 打开下载地址：${url}`);
     const ok = await openUpdatePage(url);
     if (!ok) Alert.alert('打开失败', `无法打开浏览器，请手动访问：\n${url}`);
   }
@@ -39,6 +40,14 @@ export function UpdatePanel({ onClose }: { onClose: () => void }) {
       <Card style={{ alignItems: 'center', paddingVertical: 22 }}>
         <Text style={{ color: colors.textMuted, fontSize: 12.5 }}>当前版本</Text>
         <Text style={{ color: colors.text, fontSize: 26, fontWeight: '800', marginTop: 4 }}>v{CURRENT_VERSION}</Text>
+        {BUILD_ID ? (
+          <Text
+            selectable
+            style={{ color: colors.textMuted, fontSize: 10.5, lineHeight: 16, marginTop: 6, textAlign: 'center', letterSpacing: 0.2 }}
+          >
+            构建号 {BUILD_ID}
+          </Text>
+        ) : null}
         {info ? (
           <Text style={{ color: info.hasUpdate ? colors.primary : colors.textMuted, fontSize: 13, fontWeight: '700', marginTop: 8 }}>
             {info.hasUpdate ? `发现新版本 v${info.latestVersion}` : '已是最新版本'}
@@ -78,12 +87,12 @@ export function UpdatePanel({ onClose }: { onClose: () => void }) {
       <View style={{ gap: 10, marginTop: 14 }}>
         <Button label={busy ? '检查中…' : '检查更新'} disabled={busy} onPress={() => void run()} />
         {info?.hasUpdate ? (
-          <Button label="前往下载新版本" variant="secondary" onPress={() => void goDownload()} />
+          <Button label={info?.downloadUrl ? '下载新版本安装包' : '前往发布页下载'} variant="secondary" onPress={() => void goDownload()} />
         ) : null}
       </View>
 
       <Text style={{ color: colors.textMuted, fontSize: 11.5, lineHeight: 18, marginTop: 12 }}>
-        版本信息来自开源仓库的发布记录；安装包需从发布页手动下载安装，App 内不会自动替换。
+        版本信息来自开源仓库的发布记录；安装包需从发布页手动下载安装，App 内不会自动替换。构建号用于区分同版本号的不同构建，长按可复制。
       </Text>
 
       <Button label="返回" variant="ghost" onPress={onClose} style={{ marginTop: 10 }} />

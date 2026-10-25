@@ -1,13 +1,18 @@
 /** 检查更新：读取 GitHub 仓库的 Release / Tag 作为最新版本，与本机版本比对。
  *  ⚠️ 纯前端直连 GitHub 公共 API（无需密钥）；失败时降级为「无法检查」，不影响其它功能。 */
 import { Linking } from 'react-native';
+import { APP_BUILD_ID, APP_VERSION } from '@/constants/version';
 
 /** 开源仓库（与「关于软件 → 获取源码」同一地址） */
 export const REPO_URL = 'https://github.com/3501677524/course-schedule';
 const API_BASE = 'https://api.github.com/repos/3501677524/course-schedule';
 
-/** 本机版本号：与 app.json 的 expo.version 保持一致 */
-export const CURRENT_VERSION = '1.0.0';
+/** 本机版本号：来自 src/constants/version.ts（固定壳里 Constants.expoConfig 恒为 null，
+ *  读它只会永远拿到兜底值，见该文件注释）。 */
+export const CURRENT_VERSION: string = APP_VERSION;
+
+/** 构建标识，用于区分同版本号的不同构建 */
+export const BUILD_ID: string = APP_BUILD_ID;
 
 export interface UpdateInfo {
   /** 最新版本号（去掉前缀 v） */
@@ -18,6 +23,8 @@ export interface UpdateInfo {
   publishedAt: string;
   /** 发布页地址（Release 页或仓库页） */
   pageUrl: string;
+  /** 安装包直链（Release 附件里的 apk，可能为空） */
+  downloadUrl: string;
   /** 是否有新版本 */
   hasUpdate: boolean;
 }
@@ -62,24 +69,32 @@ async function fetchJson(url: string, timeoutMs = 8000): Promise<unknown> {
 
 /** 查询最新版本：优先 Release，其次 Tag；都没有则视为「已是最新」 */
 export async function checkForUpdate(): Promise<UpdateInfo> {
-  console.info(`[update] 开始检查更新，本机版本 ${CURRENT_VERSION}`);
+  console.info(`[update] 开始检查更新，本机版本 ${CURRENT_VERSION}（来源：src/constants/version.ts），构建 ${BUILD_ID || '未知'}`);
   try {
     const release = (await fetchJson(`${API_BASE}/releases/latest`)) as {
       tag_name?: string;
       body?: string;
       published_at?: string;
       html_url?: string;
+      assets?: Array<{ name?: string; browser_download_url?: string }>;
     };
     const latest = String(release.tag_name ?? '').replace(/^v/i, '');
     if (latest) {
+      // 优先取 Release 附件里的 apk 直链，没有则退回发布页
+      const apk = Array.isArray(release.assets)
+        ? release.assets.find((a) => String(a?.name ?? '').toLowerCase().endsWith('.apk'))
+        : undefined;
       const info: UpdateInfo = {
         latestVersion: latest,
         notes: String(release.body ?? '').trim(),
         publishedAt: String(release.published_at ?? ''),
         pageUrl: String(release.html_url ?? REPO_URL),
+        downloadUrl: String(apk?.browser_download_url ?? ''),
         hasUpdate: isNewer(latest, CURRENT_VERSION),
       };
-      console.info(`[update] Release 最新版本 ${latest}，是否有更新=${info.hasUpdate}`);
+      console.info(
+        `[update] Release 最新版本 ${latest}，本机 ${CURRENT_VERSION}，是否有更新=${info.hasUpdate}，安装包直链=${info.downloadUrl || '无（走发布页）'}`,
+      );
       return info;
     }
   } catch (e) {
@@ -96,9 +111,10 @@ export async function checkForUpdate(): Promise<UpdateInfo> {
         notes: '',
         publishedAt: '',
         pageUrl: `${REPO_URL}/releases`,
+        downloadUrl: '',
         hasUpdate: isNewer(latest, CURRENT_VERSION),
       };
-      console.info(`[update] Tag 最新版本 ${latest}，是否有更新=${info.hasUpdate}`);
+      console.info(`[update] Tag 最新版本 ${latest}，本机 ${CURRENT_VERSION}，是否有更新=${info.hasUpdate}`);
       return info;
     }
   } catch (e) {
@@ -111,6 +127,7 @@ export async function checkForUpdate(): Promise<UpdateInfo> {
     notes: '',
     publishedAt: '',
     pageUrl: REPO_URL,
+    downloadUrl: '',
     hasUpdate: false,
   };
 }

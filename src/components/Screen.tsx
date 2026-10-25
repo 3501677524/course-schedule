@@ -4,6 +4,7 @@ import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { ScrollView as ScrollViewType } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from './theme';
+import { AppBackground } from './AppBackground';
 
 export function Screen({
   children,
@@ -25,6 +26,8 @@ export function Screen({
   const body = <View style={{ paddingBottom: insets.bottom + 24 }}>{children}</View>;
   return (
     <View style={[styles.root, { backgroundColor: colors.bg }]}>
+      {/* 自定义背景层：静止 absoluteFill 底衬，内容叠在其上（不参与任何动画，避免露白） */}
+      <AppBackground />
       {scroll ? (
         <ScrollView
           ref={scrollRef}
@@ -47,11 +50,11 @@ export function PageHeader({ title, subtitle, right }: { title: string; subtitle
   const { colors } = useTheme();
   return (
     <View style={styles.header}>
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
         {subtitle ? <Text style={[styles.subtitle, { color: colors.textMuted }]}>{subtitle}</Text> : null}
       </View>
-      {right}
+      {right ? <View style={styles.headerRight}>{right}</View> : null}
     </View>
   );
 }
@@ -60,6 +63,7 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   scroll: { paddingHorizontal: 16, flexGrow: 1 },
   header: { flexDirection: 'row', alignItems: 'flex-end', marginBottom: 14, marginTop: 6 },
+  headerRight: { marginLeft: 20, flexShrink: 0 },
   title: { fontSize: 25, fontWeight: '800', letterSpacing: -0.4 },
   subtitle: { fontSize: 13, marginTop: 4 },
 });

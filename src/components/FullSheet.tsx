@@ -12,6 +12,7 @@ import { BackHandler, Platform, ScrollView, StyleSheet, Text, View } from 'react
 import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from './theme';
+import { AppBackground, useBackgroundBaseColor } from './AppBackground';
 
 const EASE = Easing.bezier(0.22, 1, 0.36, 1);
 
@@ -37,6 +38,8 @@ export function FullSheet({
 }) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  // 面板同样跟随自定义背景：底衬铺背景代表色，面板内再叠一层真实背景层
+  const baseColor = useBackgroundBaseColor();
   // 进出场动画：整层从底部上滑打开、向下滑出关闭（跑在 UI 线程）。
   // ⚠️ FullSheet 是覆盖在页面上的 flex:1 全屏层，不是 Tabs/Stack 的 screen，
   // 因此可以安全包 Animated 容器，不会破坏 react-native-screens 的原生视图层级。
@@ -47,16 +50,21 @@ export function FullSheet({
   // 淡入期间半透明面板让白底透出来 → 闪白。故彻底去掉 opacity，只做 translateY 位移，
   // 背景色始终 100% 不透明。
   const slide = useSharedValue(0);
+  // 底衬（一级菜单）的联动动画：面板上滑时菜单轻微后退+变暗，下滑退场时平滑还原，
+  // 让「返回一级菜单」有层次感而不是硬切。⚠️ 只作用于底衬，面板本体仍只做 translateY。
+  const back = useSharedValue(0);
 
   useEffect(() => {
     if (visible) {
       console.info(`[sheet] 打开「${title}」，播放上滑进场动画（双层结构：静止底衬=${colors.bg} 铺满屏幕，位移层仅 translateY，深色闪白彻底根治）`);
       // 起点归零后动画到 1，形成可见的上滑位移。
       slide.value = withTiming(1, { duration: 280, easing: EASE });
+      back.value = withTiming(1, { duration: 280, easing: EASE });
     } else {
       console.info(`[sheet] 关闭「${title}」，播放下滑退场动画后卸载`);
       // ⚠️ finishCallback 运行在 UI 线程 worklet，调用 JS 回调必须经 runOnJS 桥接，否则报 _worklet 缺失。
       slide.value = withTiming(0, { duration: 240, easing: EASE }, () => runOnJS(onClosed)());
+      back.value = withTiming(0, { duration: 240, easing: EASE });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, title]);
@@ -80,6 +88,14 @@ export function FullSheet({
     transform: [{ translateY: (1 - slide.value) * 96 }],
   }));
 
+  // 底衬联动：面板上滑时一级菜单轻微缩小并下沉，退场时平滑还原（纯 transform，不涉及透明度）
+  const backdropStyle = useAnimatedStyle(() => ({
+    transform: [
+      { scale: 1 - back.value * 0.04 },
+      { translateY: back.value * 10 },
+    ],
+  }));
+
   return (
     // ⚠️ 深色模式「打开二级面板仍闪白」的第二层根因：位移动画与背景不能是同一个 View。
     // 此前结构是 <View flex:1 bg><Animated.View flex:1 bg translateY/></View>——外层 View
@@ -88,8 +104,12 @@ export function FullSheet({
     // screen 之外），露出的就是那层白。故本组件改为「自身即静止全屏底衬 + 内部位移层」：
     // backdrop 用 absoluteFill 铺满并永远不着色动画，sheet 只做 translateY，任何一帧
     // 屏幕范围内都有不透明主题底色。
-    <View style={[styles.backdrop, { backgroundColor: colors.bg }]}>
-      <Animated.View style={[styles.sheet, { backgroundColor: colors.bg }, animStyle]} pointerEvents={visible ? 'auto' : 'none'}>
+    <View style={[styles.backdrop, { backgroundColor: baseColor }]}>
+      {/* 底衬联动层：只做 transform，不铺背景色（背景由外层静止层负责，避免任何一帧露白） */}
+      <Animated.View style={[styles.backdropLayer, backdropStyle]} pointerEvents="none" />
+      <Animated.View style={[styles.sheet, { backgroundColor: baseColor }, animStyle]} pointerEvents={visible ? 'auto' : 'none'}>
+        {/* 面板内的自定义背景层：静止铺满，内容叠在其上 */}
+        <AppBackground />
         <View
           style={{
             flex: 1,
@@ -119,6 +139,8 @@ const styles = StyleSheet.create({
   backdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
   // 面板本体：同样绝对定位铺满（与屏幕等高），只做 translateY 位移
   sheet: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
+  // 底衬联动层：与面板同尺寸，仅承载 transform（不铺色）
+  backdropLayer: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 12, gap: 12 },
   title: { flex: 1, fontSize: 19, fontWeight: '800' },
   scroll: { paddingHorizontal: 16, paddingBottom: 32 },

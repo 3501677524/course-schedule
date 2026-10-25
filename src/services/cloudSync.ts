@@ -1,5 +1,5 @@
 /**
- * 云服务层：手机号+密码账号（basic_auth 虚拟邮箱方案）、班级加入/创建、
+ * 云服务层：学号/账号 + 密码账号（basic_auth 虚拟邮箱方案）、班级加入/创建、
  * 本机 SQLite ↔ 云端 timetable_snapshots.payload 双向映射。
  * 所有读写走平台生成的 supabase Client；写操作必须 .select() 校验影响行数（防 RLS 静默失败）。
  */
@@ -39,10 +39,30 @@ export interface ClassInfo {
 
 /* --------------------------------- 账号 ---------------------------------- */
 
-const PHONE_RE = /^1[3-9]\d{9}$/;
+/** 登录标识（学号 / 账号）：字母、数字、下划线，4–20 位 */
+const ACCOUNT_RE = /^[a-z0-9_]{4,20}$/;
+/** 用户名（显示名）：2–16 字，允许中文、字母、数字、下划线 */
+const DISPLAY_NAME_RE = /^[\u4e00-\u9fa5A-Za-z0-9_]{2,16}$/;
 
-function normalizePhone(input: string): string {
-  return input.replace(/[\s-]/g, '');
+/** 归一化登录标识：去空格、转小写（避免同一账号因大小写注册两次） */
+export function normalizeAccount(input: string): string {
+  return input.replace(/[\s\u3000]/g, '').toLowerCase();
+}
+
+/** 校验登录标识，返回归一化结果；不合法直接抛错 */
+export function validateAccount(input: string): string {
+  const a = normalizeAccount(input);
+  if (!a) throw new Error('请输入学号或账号');
+  if (!ACCOUNT_RE.test(a)) throw new Error('学号/账号需为 4–20 位字母、数字或下划线');
+  return a;
+}
+
+/** 校验用户名，返回去空格结果；不合法直接抛错 */
+export function validateDisplayName(input: string): string {
+  const n = input.trim();
+  if (!n) throw new Error('请设置用户名');
+  if (!DISPLAY_NAME_RE.test(n)) throw new Error('用户名需为 2–16 位中文、字母、数字或下划线');
+  return n;
 }
 
 export async function getCurrentSession(): Promise<Session | null> {
@@ -55,40 +75,67 @@ export function onAuthChange(cb: (session: Session | null) => void): () => void 
   return () => subscription.unsubscribe();
 }
 
-/** 注册：手机号作为登录标识，内部转 {phone}@meoo.local 虚拟邮箱（不展示给用户） */
-export async function signUp(phone: string, password: string): Promise<void> {
-  const p = normalizePhone(phone);
-  if (!PHONE_RE.test(p)) throw new Error('请输入正确的 11 位手机号');
+/** 注册：学号/账号作为登录标识，内部转 {account}@meoo.local 虚拟邮箱（不展示给用户） */
+export async function signUp(account: string, password: string, displayName: string): Promise<void> {
+  const a = validateAccount(account);
+  const name = validateDisplayName(displayName);
   if (password.length < 6) throw new Error('密码至少 6 位');
-  console.info('[cloud-auth] 提交注册请求');
+  console.info(`[cloud-auth] 提交注册请求：账号「${a}」，用户名「${name}」`);
   const { data, error } = await supabase.auth.signUp({
-    email: `${p}@meoo.local`,
+    email: `${a}@meoo.local`,
     password,
-    options: { data: { username: p } },
+    options: { data: { username: a, display_name: name } },
   });
   if (error) {
     console.warn('[cloud-auth] 注册失败', error.message);
-    throw new Error(error.message.includes('already registered') || error.message.includes('already exists') ? '该手机号已注册，请直接登录' : `注册失败：${error.message}`);
+    throw new Error(error.message.includes('already registered') || error.message.includes('already exists') ? '该学号/账号已被注册，请直接登录' : `注册失败：${error.message}`);
   }
   if (!data.session) {
     // 理论上平台配置下会直接返回 session；没有则引导登录一次
     console.info('[cloud-auth] 注册成功但无会话，自动补登录');
-    const login = await supabase.auth.signInWithPassword({ email: `${p}@meoo.local`, password });
+    const login = await supabase.auth.signInWithPassword({ email: `${a}@meoo.local`, password });
     if (login.error) throw new Error(`注册成功，请再登录一次：${login.error.message}`);
   }
   console.info('[cloud-auth] 注册完成，会话就绪');
 }
 
-export async function signIn(phone: string, password: string): Promise<void> {
-  const p = normalizePhone(phone);
-  if (!PHONE_RE.test(p)) throw new Error('请输入正确的 11 位手机号');
+export async function signIn(account: string, password: string): Promise<void> {
+  const a = validateAccount(account);
   console.info('[cloud-auth] 提交登录请求');
-  const { error } = await supabase.auth.signInWithPassword({ email: `${p}@meoo.local`, password });
+  const { error } = await supabase.auth.signInWithPassword({ email: `${a}@meoo.local`, password });
   if (error) {
     console.warn('[cloud-auth] 登录失败', error.message);
-    throw new Error(error.message === 'Invalid login credentials' ? '手机号或密码不正确' : `登录失败：${error.message}`);
+    throw new Error(error.message === 'Invalid login credentials' ? '学号/账号或密码不正确' : `登录失败：${error.message}`);
   }
   console.info('[cloud-auth] 登录成功');
+}
+
+/** 修改用户名：先写 auth 元数据（会话内立即可读），再同步 profiles 表 */
+export async function updateDisplayName(input: string): Promise<string> {
+  const name = validateDisplayName(input);
+  const { error } = await supabase.auth.updateUser({ data: { display_name: name } });
+  if (error) throw new Error(`修改用户名失败：${error.message}`);
+  const uid = await requireUid();
+  const { data, error: e2 } = await supabase
+    .from('profiles')
+    .update({ display_name: name })
+    .eq('id', uid)
+    .select('id');
+  if (e2) throw new Error(`用户名已更新，但云端档案同步失败：${e2.message}`);
+  if (!data || data.length === 0) console.warn('[cloud-auth] profiles 未命中更新（可能档案尚未建立），仅更新了账号元数据');
+  console.info(`[cloud-auth] 用户名已更新为「${name}」`);
+  return name;
+}
+
+/** 读取云端档案里的用户名（元数据缺失时的兜底来源） */
+export async function getProfileDisplayName(): Promise<string> {
+  const uid = await requireUid();
+  const { data, error } = await supabase.from('profiles').select('display_name').eq('id', uid).maybeSingle();
+  if (error) {
+    console.warn('[cloud-auth] 读取档案失败', error.message);
+    return '';
+  }
+  return (data?.display_name as string | undefined) ?? '';
 }
 
 export async function signOut(): Promise<void> {

@@ -1,4 +1,4 @@
-/** 账号登录/注册：手机号 + 密码（basic_auth，手机号作为登录标识） */
+/** 账号登录/注册：学号或账号 + 密码（basic_auth，账号作为登录标识），注册时设置用户名 */
 import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -7,7 +7,7 @@ import { Button, Card } from '@/components/ui';
 import { Field, TextField } from '@/components/Field';
 import { useTheme } from '@/components/theme';
 import { useAuth } from '@/hooks/useAuth';
-import { signIn, signUp } from '@/services/cloudSync';
+import { signIn, signUp, validateAccount, validateDisplayName } from '@/services/cloudSync';
 
 export default function AuthScreen() {
   const router = useRouter();
@@ -15,7 +15,8 @@ export default function AuthScreen() {
   const { session, authReady } = useAuth();
 
   const [tab, setTab] = useState<'login' | 'register'>('login');
-  const [phone, setPhone] = useState('');
+  const [account, setAccount] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
   const [password2, setPassword2] = useState('');
   const [busy, setBusy] = useState(false);
@@ -32,8 +33,11 @@ export default function AuthScreen() {
   const submit = async () => {
     if (busy) return;
     setError('');
-    if (!/^1[3-9]\d{9}$/.test(phone.replace(/[\s-]/g, ''))) {
-      setError('请输入正确的 11 位手机号');
+    try {
+      validateAccount(account);
+      if (tab === 'register') validateDisplayName(displayName);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '请检查输入');
       return;
     }
     if (password.length < 6) {
@@ -47,9 +51,9 @@ export default function AuthScreen() {
     setBusy(true);
     try {
       if (tab === 'register') {
-        await signUp(phone, password);
+        await signUp(account, password, displayName);
       } else {
-        await signIn(phone, password);
+        await signIn(account, password);
       }
       console.info(`[auth-page] ${tab === 'register' ? '注册' : '登录'}成功，返回上一页`);
       router.back();
@@ -71,7 +75,7 @@ export default function AuthScreen() {
 
         <Text style={[styles.h1, { color: colors.text }]}>账号登录</Text>
         <Text style={[styles.sub, { color: colors.textMuted }]}>
-          登录后即可加入班级、拉取管理员发布的课表。手机号仅作为登录标识，本机课表数据不会自动上传。
+          用学号或自定账号登录，即可加入班级、拉取管理员发布的课表。账号仅作为登录标识，本机课表数据不会自动上传。
         </Text>
 
         <Card style={{ marginTop: 18 }}>
@@ -80,9 +84,20 @@ export default function AuthScreen() {
             <ChipBtn label="注册" active={tab === 'register'} onPress={() => { setTab('register'); setError(''); }} />
           </View>
 
-          <Field label="手机号">
-            <TextField value={phone} onChangeText={setPhone} placeholder="11 位手机号" keyboardType="phone-pad" />
+          <Field label="学号 / 账号" hint="4–20 位字母、数字或下划线">
+            <TextField
+              value={account}
+              onChangeText={setAccount}
+              placeholder="例如 20260325 或 zhangsan"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
           </Field>
+          {tab === 'register' ? (
+            <Field label="用户名" hint="2–16 位，显示在「我的」页面">
+              <TextField value={displayName} onChangeText={setDisplayName} placeholder="例如 张三" />
+            </Field>
+          ) : null}
           <Field label="密码" hint={tab === 'register' ? '至少 6 位' : undefined}>
             <TextField value={password} onChangeText={setPassword} placeholder="输入密码" />
           </Field>
@@ -96,6 +111,10 @@ export default function AuthScreen() {
 
           <Button label={busy ? '处理中…' : tab === 'register' ? '注册并登录' : '登录'} disabled={busy} onPress={() => void submit()} />
         </Card>
+
+        <Text style={{ color: colors.textMuted, fontSize: 11.5, lineHeight: 18, marginTop: 14 }}>
+          账号体系已从手机号改为学号/账号，此前用手机号注册的账号无法再登录；如需继续使用班级同步，请用学号/账号重新注册。
+        </Text>
       </KeyboardAvoidingView>
     </Screen>
   );
