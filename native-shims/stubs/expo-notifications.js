@@ -51,19 +51,19 @@ function subscription() {
 }
 
 const fakes = {
-  requestPermissionsAsync: fakeApi(PKG, 'requestPermissionsAsync', GRANTED_PERMISSION),
+  requestPermissionsAsync: fakeApi(PKG, 'requestPermissionsAsync', GRANTED_PERMISSION, { silent: true }),
   getPermissionsAsync: fakeApi(PKG, 'getPermissionsAsync', GRANTED_PERMISSION, { silent: true }),
   allowsNotificationsAsync: fakeApi(PKG, 'allowsNotificationsAsync', true, { silent: true }),
 
-  // 调度类返回假 id：形状对，但预览里不会真的弹出通知，dialog 负责说明
-  scheduleNotificationAsync: fakeApi(PKG, 'scheduleNotificationAsync', () => `preview-notification-${Date.now()}`),
-  presentNotificationAsync: fakeApi(PKG, 'presentNotificationAsync', () => `preview-notification-${Date.now()}`),
-  getAllScheduledNotificationsAsync: fakeApi(PKG, 'getAllScheduledNotificationsAsync', () => []),
-  cancelScheduledNotificationAsync: fakeApi(PKG, 'cancelScheduledNotificationAsync', undefined),
-  cancelAllScheduledNotificationsAsync: fakeApi(PKG, 'cancelAllScheduledNotificationsAsync', undefined),
-  dismissNotificationAsync: fakeApi(PKG, 'dismissNotificationAsync', undefined),
-  dismissAllNotificationsAsync: fakeApi(PKG, 'dismissAllNotificationsAsync', undefined),
-  getPresentedNotificationsAsync: fakeApi(PKG, 'getPresentedNotificationsAsync', () => []),
+  // 调度类返回假 id：形状对，但预览里不会真的弹出通知；Web 版一律静默不弹提示
+  scheduleNotificationAsync: fakeApi(PKG, 'scheduleNotificationAsync', () => `preview-notification-${Date.now()}`, { silent: true }),
+  presentNotificationAsync: fakeApi(PKG, 'presentNotificationAsync', () => `preview-notification-${Date.now()}`, { silent: true }),
+  getAllScheduledNotificationsAsync: fakeApi(PKG, 'getAllScheduledNotificationsAsync', () => [], { silent: true }),
+  cancelScheduledNotificationAsync: fakeApi(PKG, 'cancelScheduledNotificationAsync', undefined, { silent: true }),
+  cancelAllScheduledNotificationsAsync: fakeApi(PKG, 'cancelAllScheduledNotificationsAsync', undefined, { silent: true }),
+  dismissNotificationAsync: fakeApi(PKG, 'dismissNotificationAsync', undefined, { silent: true }),
+  dismissAllNotificationsAsync: fakeApi(PKG, 'dismissAllNotificationsAsync', undefined, { silent: true }),
+  getPresentedNotificationsAsync: fakeApi(PKG, 'getPresentedNotificationsAsync', () => [], { silent: true }),
 
   getBadgeCountAsync: fakeApi(PKG, 'getBadgeCountAsync', 0, { silent: true }),
   setBadgeCountAsync: fakeApi(PKG, 'setBadgeCountAsync', true, { silent: true }),
@@ -72,8 +72,8 @@ const fakes = {
   getExpoPushTokenAsync: fakeApi(PKG, 'getExpoPushTokenAsync', {
     type: 'expo',
     data: 'ExponentPushToken[preview-only]',
-  }),
-  getDevicePushTokenAsync: fakeApi(PKG, 'getDevicePushTokenAsync', { type: 'web', data: {} }),
+  }, { silent: true }),
+  getDevicePushTokenAsync: fakeApi(PKG, 'getDevicePushTokenAsync', { type: 'web', data: {} }, { silent: true }),
 
   getLastNotificationResponseAsync: fakeApi(PKG, 'getLastNotificationResponseAsync', null, { silent: true }),
   setNotificationChannelAsync: fakeApi(PKG, 'setNotificationChannelAsync', null, { silent: true }),
