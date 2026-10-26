@@ -23,23 +23,19 @@
 - **作业管理**：作业清单与状态跟踪
 - **课程管理**：20+ 门课，手动排课、Excel 模板批量导入（内置模板导出）
 - **学期管理**：多学期切换，自动计算当前教学周
-- **班级云同步**：管理员上传、同学拉取（Supabase）—— ⚠️ **当前暂不可用，见下方说明**
+- **班级云同步**：管理员上传、同学拉取（Supabase，自建后端）✅
 - **天气与生活建议**：气温与带伞建议
 - **外观定制**：墨绿 / 石墨蓝 / 暮紫 / 暖橙 / 青瓷 / 酒红 主题色，浅色 / 深色 / 跟随系统；自定义背景（纯色 / 渐变 / 图片）与主题色跟随
 - **检查更新**：读取 GitHub Release 自动检测新版本（当前 `2.5.0`）
 
-## ⚠️ 云同步（SQL）暂不可用
+## ☁️ 云同步说明
 
-本项目的云同步依赖 Supabase 数据库，但**源码中配置的托管数据库已失效（接口返回 404），云同步功能当前无法使用**，包括：注册 / 登录、创建班级、上传 / 下载班级课表。
+云同步后端已迁移至**自建 Supabase 项目**（2026-10-26），注册 / 登录、创建班级、上传 / 下载班级课表均已恢复可用。
 
-仓库根目录的 `migration.sql` 包含自建 Supabase 的完整迁移 SQL，执行后可自行搭建后端复活云同步，步骤：
-
-1. 到 supabase.com 新建免费项目
-2. SQL Editor 中执行迁移脚本（建表 + 行级安全策略）
-3. 修改 `src/supabase/client.ts` 中的 `supabaseUrl` 与 `supabaseAnonKey` 为新项目的值
-4. 重新构建即可
-
-其余本地功能不受影响，可正常使用。
+- 数据库结构由仓库根目录 `migration.sql` 创建（4 张表 + 行级安全 RLS 策略）
+- 后端地址与密钥在 `src/supabase/client.ts`（anon key 为公开访客密钥，仅能访问 RLS 放行的数据）
+- 若需自行搭建：1. 到 supabase.com 新建免费项目 → 2. SQL Editor 执行 `migration.sql` → 3. 修改 `client.ts` 中的 `supabaseUrl` 与 `supabaseAnonKey` → 4. 重新构建
+- 注意：Supabase 默认开启邮箱确认，账号以「学号@meoo.local」虚拟邮箱注册，需在控制台 Authentication → Providers → Email 中**关闭 Confirm email**，否则无法登录
 
 ## 🚀 运行
 
@@ -91,6 +87,6 @@ src/
 
 ## ⚠️ 注意
 
-- 云同步后端已失效，详见上方「云同步（SQL）暂不可用」；如需恢复请自建 Supabase 并执行迁移脚本
+- 云同步后端为自建 Supabase，见上方「云同步说明」；anon key 公开属正常设计（RLS 保护数据），`service_role` 密钥严禁外泄
 - `app.json` 中 `android.package` 为占位包名，正式发布前请改为你自己的包名
 - 课表模板导出依赖 `xlsx` 解析，模板文件位于 `src/assets/2603025班学期周课表_模板.zip`（内容为 OOXML xlsx）
