@@ -9,11 +9,6 @@ if (config.resolver.assetExts) {
   config.resolver.assetExts.push('wasm');
 }
 
-// GitHub Pages 子路径部署：所有资源 URL 加仓库前缀，避免白屏
-if (config.transformer) {
-  config.transformer.publicPath = '/course-schedule/';
-}
-
 // Web 端原生模块降级映射：与线上构建一致的 native-shims 方案
 // 这些模块在 web 平台没有原生实现（或调用即崩），统一替换为本地 stub。
 const SHIMS = {
