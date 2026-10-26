@@ -7,9 +7,7 @@ import { supabase } from '../supabase/client';
 import type { Session } from '@supabase/supabase-js';
 import * as repo from './repo';
 import type { CalendarEvent, Course, ExamItem, HomeworkItem, PeriodSlot, Semester } from '@/types';
-
 /* ------------------------------ payload 结构 ----------------------------- */
-
 /** 云端快照 payload：只含「共享课表」相关数据，个人设置/铃声/天气缓存不上云 */
 export interface TimetablePayload {
   version: 1;
@@ -21,7 +19,6 @@ export interface TimetablePayload {
   homework: Array<Omit<HomeworkItem, 'id' | 'semesterId'>>;
   events: Array<Omit<CalendarEvent, 'id' | 'semesterId'>>;
 }
-
 export interface CloudSnapshotMeta {
   id: string;
   createdAt: string;
@@ -29,26 +26,21 @@ export interface CloudSnapshotMeta {
   courseCount: number;
   uploaderName: string;
 }
-
 export interface ClassInfo {
   classId: string;
   code: string;
   name: string;
   isOwner: boolean;
 }
-
 /* --------------------------------- 账号 ---------------------------------- */
-
 /** 登录标识（学号 / 账号）：字母、数字、下划线，4–20 位 */
 const ACCOUNT_RE = /^[a-z0-9_]{4,20}$/;
 /** 用户名（显示名）：2–16 字，允许中文、字母、数字、下划线 */
 const DISPLAY_NAME_RE = /^[\u4e00-\u9fa5A-Za-z0-9_]{2,16}$/;
-
 /** 归一化登录标识：去空格、转小写（避免同一账号因大小写注册两次） */
 export function normalizeAccount(input: string): string {
   return input.replace(/[\s\u3000]/g, '').toLowerCase();
 }
-
 /** 校验登录标识，返回归一化结果；不合法直接抛错 */
 export function validateAccount(input: string): string {
   const a = normalizeAccount(input);
@@ -56,7 +48,6 @@ export function validateAccount(input: string): string {
   if (!ACCOUNT_RE.test(a)) throw new Error('学号/账号需为 4–20 位字母、数字或下划线');
   return a;
 }
-
 /** 校验用户名，返回去空格结果；不合法直接抛错 */
 export function validateDisplayName(input: string): string {
   const n = input.trim();
@@ -64,52 +55,59 @@ export function validateDisplayName(input: string): string {
   if (!DISPLAY_NAME_RE.test(n)) throw new Error('用户名需为 2–16 位中文、字母、数字或下划线');
   return n;
 }
-
 export async function getCurrentSession(): Promise<Session | null> {
   const { data } = await supabase.auth.getSession();
   return data.session ?? null;
 }
-
 export function onAuthChange(cb: (session: Session | null) => void): () => void {
   const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => cb(session));
   return () => subscription.unsubscribe();
 }
-
-/** 注册：学号/账号作为登录标识，内部转 {account}@meoo.local 虚拟邮箱（不展示给用户） */
+/** 注册：学号/账号作为登录标识，内部转 {account}@example.com 虚拟邮箱（不展示给用户；仅作登录标识，不真实收信） */
 export async function signUp(account: string, password: string, displayName: string): Promise<void> {
   const a = validateAccount(account);
   const name = validateDisplayName(displayName);
   if (password.length < 6) throw new Error('密码至少 6 位');
   console.info(`[cloud-auth] 提交注册请求：账号「${a}」，用户名「${name}」`);
   const { data, error } = await supabase.auth.signUp({
-    email: `${a}@meoo.local`,
+    email: `${a}@example.com`,
     password,
     options: { data: { username: a, display_name: name } },
   });
   if (error) {
     console.warn('[cloud-auth] 注册失败', error.message);
+    if (isNetworkError(error.message)) {
+      throw new Error('无法连接服务器，请检查网络后重试（若在浏览器预览，请关闭网络抓包类扩展或改用无痕窗口）');
+    }
     throw new Error(error.message.includes('already registered') || error.message.includes('already exists') ? '该学号/账号已被注册，请直接登录' : `注册失败：${error.message}`);
   }
   if (!data.session) {
     // 理论上平台配置下会直接返回 session；没有则引导登录一次
     console.info('[cloud-auth] 注册成功但无会话，自动补登录');
-    const login = await supabase.auth.signInWithPassword({ email: `${a}@meoo.local`, password });
+    const login = await supabase.auth.signInWithPassword({ email: `${a}@example.com`, password });
     if (login.error) throw new Error(`注册成功，请再登录一次：${login.error.message}`);
   }
   console.info('[cloud-auth] 注册完成，会话就绪');
 }
-
+/** 网络层失败（fetch 被拦截 / 断网 / DNS 失败）统一转成可读提示。
+ *  ⚠️ 浏览器里 `TypeError: Failed to fetch` 的成因很多（断网、CORS、扩展劫持 fetch），
+ *  原样抛给用户只会看到「登录失败：Failed to fetch」，无法判断该查什么。 */
+function isNetworkError(message: string): boolean {
+  return /failed to fetch|network ?request failed|load failed|networkerror/i.test(message);
+}
 export async function signIn(account: string, password: string): Promise<void> {
   const a = validateAccount(account);
   console.info('[cloud-auth] 提交登录请求');
-  const { error } = await supabase.auth.signInWithPassword({ email: `${a}@meoo.local`, password });
+  const { error } = await supabase.auth.signInWithPassword({ email: `${a}@example.com`, password });
   if (error) {
     console.warn('[cloud-auth] 登录失败', error.message);
+    if (isNetworkError(error.message)) {
+      throw new Error('无法连接服务器，请检查网络后重试（若在浏览器预览，请关闭网络抓包类扩展或改用无痕窗口）');
+    }
     throw new Error(error.message === 'Invalid login credentials' ? '学号/账号或密码不正确' : `登录失败：${error.message}`);
   }
   console.info('[cloud-auth] 登录成功');
 }
-
 /** 修改用户名：先写 auth 元数据（会话内立即可读），再同步 profiles 表 */
 export async function updateDisplayName(input: string): Promise<string> {
   const name = validateDisplayName(input);
@@ -126,7 +124,6 @@ export async function updateDisplayName(input: string): Promise<string> {
   console.info(`[cloud-auth] 用户名已更新为「${name}」`);
   return name;
 }
-
 /** 读取云端档案里的用户名（元数据缺失时的兜底来源） */
 export async function getProfileDisplayName(): Promise<string> {
   const uid = await requireUid();
@@ -137,20 +134,16 @@ export async function getProfileDisplayName(): Promise<string> {
   }
   return (data?.display_name as string | undefined) ?? '';
 }
-
 export async function signOut(): Promise<void> {
   await supabase.auth.signOut();
   console.info('[cloud-auth] 已退出登录');
 }
-
 async function requireUid(): Promise<string> {
   const session = await getCurrentSession();
   if (!session?.user) throw new Error('请先登录');
   return session.user.id;
 }
-
 /* -------------------------------- 班级 ----------------------------------- */
-
 /** 查询当前用户已加入/创建的班级（classes ∪ class_members 两条来源合并去重） */
 export async function getMyClass(): Promise<ClassInfo | null> {
   const uid = await requireUid();
@@ -173,7 +166,6 @@ export async function getMyClass(): Promise<ClassInfo | null> {
   if (!o) return null;
   return { classId: String(o.id), code: String(o.code), name: String(o.name), isOwner: true };
 }
-
 /** 创建/加入时统一生成班级码：6 位大写、剔除易混字符（0/O、1/I/L） */
 function genClassCode(): string {
   const alphabet = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
@@ -181,7 +173,6 @@ function genClassCode(): string {
   for (let i = 0; i < 6; i += 1) s += alphabet[Math.floor(Math.random() * alphabet.length)];
   return s;
 }
-
 /** 用班级码加入班级（幂等：已在班直接返回现状） */
 export async function joinClass(code: string): Promise<ClassInfo> {
   // 用户手输常带空格/换行/全角字符，且 RLS 下查不到与不存在无法区分，清洗必须做到极致
@@ -215,7 +206,6 @@ export async function joinClass(code: string): Promise<ClassInfo> {
   }
   return { classId, code: String(cls.code), name: String(cls.name), isOwner: cls.owner_id === uid };
 }
-
 /** 创建班级（创建者即管理员），班级码自动生成 */
 export async function createClass(name: string): Promise<ClassInfo> {
   const n = name.trim();
@@ -245,9 +235,7 @@ export async function createClass(name: string): Promise<ClassInfo> {
   }
   throw new Error(`班级码重复，请稍后重试：${lastErr}`);
 }
-
 /* ---------------------------- 快照：上传 / 拉取 ---------------------------- */
-
 /** 从本机 SQLite 组装共享课表 payload（当前学期 + 全局作息） */
 export async function buildLocalPayload(): Promise<TimetablePayload> {
   const semester = await repo.getCurrentSemester();
@@ -270,10 +258,9 @@ export async function buildLocalPayload(): Promise<TimetablePayload> {
     homework: homework.map(({ id: _id, semesterId: _sid, courseId: _cid, ...rest }) => ({ ...rest, courseId: null })),
     events: events.map(({ id: _id, semesterId: _sid, ...rest }) => rest),
   };
-  console.info(`[cloud-sync] 组装载荷：学期「${semester.name}」课程 ${payload.courses.length} 条、考试 ${payload.exams.length}、作业 ${payload.homework.length}、校历 ${payload.events.length}、作息 ${payload.periods.length} 节`);
+  console.info(`[cloud-sync] 组装载荷：学期「${payload.semester.name}」课程 ${payload.courses.length} 条、考试 ${payload.exams.length}、作业 ${payload.homework.length}、校历 ${payload.events.length}、作息 ${payload.periods.length} 节`);
   return payload;
 }
-
 /** 管理员上传快照（旧快照全部替换，班级里永远只有最新一份） */
 export async function uploadSnapshot(): Promise<{ courseCount: number }> {
   const uid = await requireUid();
@@ -300,7 +287,6 @@ export async function uploadSnapshot(): Promise<{ courseCount: number }> {
   console.info(`[cloud-sync] 快照上传成功 snapshot=${data[0].id} 课程 ${payload.courses.length} 条`);
   return { courseCount: payload.courses.length };
 }
-
 /** 班级最新快照的元信息（同学端展示用） */
 export async function getLatestSnapshotMeta(): Promise<CloudSnapshotMeta | null> {
   const cls = await getMyClass();
@@ -323,7 +309,6 @@ export async function getLatestSnapshotMeta(): Promise<CloudSnapshotMeta | null>
     uploaderName: String(profile?.username ?? '未知'),
   };
 }
-
 /** 拉取班级最新快照并覆盖写入本机（同名学期复用，避免重复学期） */
 export async function pullLatestSnapshotToLocal(): Promise<{ courseCount: number; semesterName: string }> {
   const cls = await getMyClass();
@@ -345,7 +330,6 @@ export async function pullLatestSnapshotToLocal(): Promise<{ courseCount: number
   console.info(`[cloud-sync] 已从班级 ${cls.code} 拉取并覆盖本机课表：课程 ${payload.courses.length} 条`);
   return { courseCount: payload.courses.length, semesterName: payload.semester.name };
 }
-
 /** 把云端 payload 落到本机 SQLite：学期按名复用、作息整体替换、课程/考试/作业/校历整表覆盖 */
 async function applyPayloadToLocal(payload: TimetablePayload): Promise<void> {
   const semesters = await repo.listSemesters();
@@ -380,7 +364,6 @@ async function applyPayloadToLocal(payload: TimetablePayload): Promise<void> {
   for (const h of oldHw) await repo.deleteHomework(h.id);
   const oldEvents = await repo.listCalendarEvents(sid);
   for (const ev of oldEvents) await repo.deleteCalendarEvent(ev.id);
-
   for (const c of payload.courses) await repo.upsertCourse({ ...c, weeks: Array.isArray(c.weeks) ? c.weeks : [], semesterId: sid });
   for (const e of payload.exams ?? []) await repo.upsertExam({ ...e, semesterId: sid });
   for (const h of payload.homework ?? []) await repo.upsertHomework({ ...h, courseId: null, semesterId: sid });

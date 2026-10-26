@@ -78,6 +78,14 @@ export default function AuthScreen() {
           用学号或自定账号登录，即可加入班级、拉取管理员发布的课表。账号仅作为登录标识，本机课表数据不会自动上传。
         </Text>
 
+        {Platform.OS === 'web' ? (
+          <View style={[styles.webNotice, { backgroundColor: colors.cardSoft, borderColor: colors.border }]}>
+            <Text style={{ color: colors.textMuted, fontSize: 12, lineHeight: 18 }}>
+              ⚠️ 提醒：网页端与软件端数据不互通，且网页端登录与注册功能可能失效。登录进去算你运气好，失败也不用奇怪。
+            </Text>
+          </View>
+        ) : null}
+
         <Card style={{ marginTop: 18 }}>
           <View style={styles.tabRow}>
             <ChipBtn label="登录" active={tab === 'login'} onPress={() => { setTab('login'); setError(''); }} />
@@ -132,6 +140,7 @@ function ChipBtn({ label, active, onPress }: { label: string; active: boolean; o
 const styles = StyleSheet.create({
   h1: { fontSize: 24, fontWeight: '800', marginTop: 8 },
   sub: { fontSize: 13, lineHeight: 20, marginTop: 8 },
+  webNotice: { marginTop: 14, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1 },
   tabRow: { flexDirection: 'row', gap: 10, marginBottom: 18 },
   tabBtn: { flex: 1, paddingVertical: 10, borderRadius: 12, borderWidth: 1, alignItems: 'center' },
 });
