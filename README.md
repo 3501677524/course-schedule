@@ -1,8 +1,19 @@
 # 课程表 (course-schedule)
 
+> **本仓库由 AI 生成**（秒悟平台 + 豆包协作产出），开源供学习与自用。
+> 代码可用性以实际验证为准，欢迎克隆、修改、二次开发。
+
 大学生课程表 App —— Expo / React Native 跨平台应用（Android / iOS / Web）。
 
 本地优先：课表、考试、作业等数据默认保存在本机 SQLite，断网完全可用；支持班级课表云同步（Supabase）、Excel 模板一键导入、上课提醒与考试双重提醒、天气与生活建议。
+
+## 🌐 在线使用（Web 版）
+
+无需安装，浏览器直接打开：
+
+**https://3501677524.github.io/course-schedule/**
+
+> Web 版说明：本地课表、Excel 导入、外观自定义等核心功能均可用；上课提醒 / 触感反馈为原生能力，Web 端不可用（已自动降级，不报错）。
 
 ## ✨ 功能
 
@@ -12,10 +23,23 @@
 - **作业管理**：作业清单与状态跟踪
 - **课程管理**：20+ 门课，手动排课、Excel 模板批量导入（内置模板导出）
 - **学期管理**：多学期切换，自动计算当前教学周
-- **班级云同步**：管理员上传、同学拉取（Supabase）
+- **班级云同步**：管理员上传、同学拉取（Supabase）—— ⚠️ **当前暂不可用，见下方说明**
 - **天气与生活建议**：气温与带伞建议
-- **外观定制**：墨绿 / 石墨蓝 / 暮紫 / 暖橙 / 青瓷 / 酒红 主题色，浅色 / 深色 / 跟随系统
-- **检查更新**：读取 GitHub Release 自动检测新版本（当前 `1.0.0`）
+- **外观定制**：墨绿 / 石墨蓝 / 暮紫 / 暖橙 / 青瓷 / 酒红 主题色，浅色 / 深色 / 跟随系统；自定义背景（纯色 / 渐变 / 图片）与主题色跟随
+- **检查更新**：读取 GitHub Release 自动检测新版本（当前 `2.5.0`）
+
+## ⚠️ 云同步（SQL）暂不可用
+
+本项目的云同步依赖 Supabase 数据库，但**源码中配置的托管数据库已失效（接口返回 404），云同步功能当前无法使用**，包括：注册 / 登录、创建班级、上传 / 下载班级课表。
+
+仓库根目录的 `migration.sql` 包含自建 Supabase 的完整迁移 SQL，执行后可自行搭建后端复活云同步，步骤：
+
+1. 到 supabase.com 新建免费项目
+2. SQL Editor 中执行迁移脚本（建表 + 行级安全策略）
+3. 修改 `src/supabase/client.ts` 中的 `supabaseUrl` 与 `supabaseAnonKey` 为新项目的值
+4. 重新构建即可
+
+其余本地功能不受影响，可正常使用。
 
 ## 🚀 运行
 
@@ -24,6 +48,13 @@ npm install
 npx expo start        # 开发服务
 npx expo start --web  # 网页预览
 npx expo run:android  # Android 真机构建
+```
+
+Web 版构建并部署到 GitHub Pages：
+
+```bash
+npx expo export --platform web   # 产物在 dist/
+# 将 dist 内容推送到 gh-pages 分支即可（含 .nojekyll 与 404.html）
 ```
 
 > 依赖版本从线上构建包还原推断（`package.json`），如遇版本冲突请运行 `npx expo install --fix` 校正。
@@ -47,7 +78,7 @@ src/
 
 `src/services/updateCheck.ts` 读取 GitHub 仓库的 Release / Tag 作为最新版本，与本地版本逐段比较：
 
-- 仓库有 Release（如 `v1.8.0`）→ 展示更新说明并跳转发布页下载
+- 仓库有 Release（如 `v2.5.0`）→ 展示更新说明并跳转发布页下载
 - 无 Release / Tag → 显示「已是最新」
 - 请求 8 秒超时，失败降级不报错
 
@@ -60,6 +91,6 @@ src/
 
 ## ⚠️ 注意
 
-- `src/supabase/client.ts` 含云同步服务密钥，发布前请确认是否需要轮换
+- 云同步后端已失效，详见上方「云同步（SQL）暂不可用」；如需恢复请自建 Supabase 并执行迁移脚本
 - `app.json` 中 `android.package` 为占位包名，正式发布前请改为你自己的包名
 - 课表模板导出依赖 `xlsx` 解析，模板文件位于 `src/assets/2603025班学期周课表_模板.zip`（内容为 OOXML xlsx）
