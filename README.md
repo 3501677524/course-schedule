@@ -13,7 +13,7 @@
 
 **https://3501677524.github.io/course-schedule/**
 
-> Web 版说明：本地课表、Excel 导入、外观自定义等核心功能均可用；上课提醒 / 触感反馈为原生能力，Web 端不可用（已自动降级，不报错）。
+> Web 版说明：本地课表、Excel 导入、外观自定义等核心功能均可用；上课提醒 / 触感反馈为原生能力，Web 端不可用。
 
 ## ✨ 功能
 
@@ -83,7 +83,7 @@ src/
 - **v2.5.0**：自定义背景（纯色 / 渐变 / 图片）、主题色跟随背景、触感反馈总开关、新版 Excel 模板，[Android](https://github.com/3501677524/course-schedule/releases/download/v2.5.0/app-release-v3007.apk) / [iOS](https://github.com/3501677524/course-schedule/releases/download/v2.5.0/app-ios-release-v3007.ipa)
 - **v2.1.0**：Excel 导入全面兼容修复、导入诊断、剪贴板导入、导入确认弹窗，[Android](https://github.com/3501677524/course-schedule/releases/download/v2.1.0/app-release-v2900.apk) / [iOS](https://github.com/3501677524/course-schedule/releases/download/v2.1.0/app-ios-release-v2900.ipa)
 - **v2.0.0**：双端新版本，[Android](https://github.com/3501677524/course-schedule/releases/download/v2.0.0/app-release-v2302.apk) / [iOS](https://github.com/3501677524/course-schedule/releases/download/v2.0.0/app-ios-release-v2302.ipa)
-- **v1.8.0**：首个公开 Release，包含 Android 安装包 [app-release-v1800.apk](https://github.com/3501677524/course-schedule/releases/download/v1.8.0/app-release-v1800.apk)
+- **v1.0.0**：首个公开 Release，包含 Android 安装包 [app-release-v1800.apk](https://github.com/3501677524/course-schedule/releases/download/v1.8.0/app-release-v1800.apk)
 
 ## ⚠️ 注意
 
