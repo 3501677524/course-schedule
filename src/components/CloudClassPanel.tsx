@@ -1,6 +1,6 @@
 /** 班级课表云同步面板：登录状态、加入/创建班级、管理员上传、同学拉取 */
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, StyleSheet, Text, View } from 'react-native';
 import { Button, Card, Chip } from './ui';
 import { Field, TextField } from './Field';
 import { useTheme } from './theme';
@@ -129,6 +129,17 @@ export function CloudClassPanel({ onClose }: { onClose: () => void }) {
     });
 
   const doSignOut = () => {
+    // 网页端 Alert.alert 不支持多按钮回调（确认按钮无响应），改用 window.confirm
+    if (Platform.OS === 'web') {
+      const ok = typeof window !== 'undefined' ? window.confirm('确认退出登录？退出后班级云同步功能不可用，本机课表数据不受影响。') : true;
+      if (!ok) return;
+      void (async () => {
+        await signOut();
+        setCls(null);
+        setMeta(null);
+      })();
+      return;
+    }
     Alert.alert('退出登录', '退出后班级云同步功能不可用，本机课表数据不受影响。', [
       { text: '取消', style: 'cancel' },
       {

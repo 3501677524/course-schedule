@@ -1,6 +1,6 @@
 /** 账号面板：展示登录标识与用户名，支持修改用户名、退出登录 */
 import { useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Button, Card } from './ui';
 import { Field, TextField } from './Field';
@@ -64,6 +64,18 @@ export function AccountPanel({ onClose }: { onClose: () => void }) {
   };
 
   const doSignOut = () => {
+    // 网页端 Alert.alert 不支持多按钮回调（确认按钮无响应），改用 window.confirm
+    if (Platform.OS === 'web') {
+      const ok = typeof window !== 'undefined' ? window.confirm('确认退出登录？退出后班级云同步需要重新登录才能使用，本机课表数据不受影响。') : true;
+      if (!ok) return;
+      void signOut()
+        .then(() => {
+          console.info('[account-panel] 已退出登录');
+          onClose();
+        })
+        .catch((e) => Alert.alert('退出失败', e instanceof Error ? e.message : String(e)));
+      return;
+    }
     Alert.alert('退出登录', '退出后班级云同步需要重新登录才能使用，本机课表数据不受影响。', [
       { text: '取消', style: 'cancel' },
       {
