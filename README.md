@@ -1,6 +1,6 @@
 # 课程表 (course-schedule)
 
-> **本仓库由 AI 生成**（秒悟平台 + 豆包协作产出），开源供学习与自用。
+> **本仓库由 AI 生成**（秒悟平台借助deepseek v4.1 flash + 豆包协作产出），开源供学习与自用。
 > 代码可用性以实际验证为准，欢迎克隆、修改、二次开发。
 
 大学生课程表 App —— Expo / React Native 跨平台应用（Android / iOS / Web）。
