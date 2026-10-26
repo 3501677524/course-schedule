@@ -924,10 +924,102 @@ const SOURCE_REPO_URL = 'https://github.com/3501677524/course-schedule';
 const BUG_REPORT_IMAGE_URI =
   'https://conversation.cdn.meoo.host/conversations/372344987750408192/image/2026-10-25/1792897510972-1792897369301.png?auth_key=11f6c2883387e99d6bb5365f4abd051988e9d66dd1940cd267564d468ef76a4e';
 
+/** 内置版本更新日志（随包内置，无网也能查看；与「关于软件 → 版本更新日志」共用） */
+const CHANGELOG: Array<{ version: string; date: string; title: string; items: Array<{ kind: '新增' | '优化' | '修复'; text: string }> }> = [
+  {
+    version: '2.5.0',
+    date: '2026-10-26',
+    title: '自定义背景上线，主题色、卡片与开关全部跟随背景色系',
+    items: [
+      { kind: '新增', text: '自定义背景：纯色、渐变（6 套）、相册图片三种模式，渐变与图片可调遮罩强度' },
+      { kind: '新增', text: '主题色跟随背景：开关、进度条、选中态、今日预览顶部卡片自动取背景主色，也可手动锁定 6 套色系之一' },
+      { kind: '新增', text: '图片背景支持标注「深色图片 / 浅色图片」，卡片与文字自动转对应明暗' },
+      { kind: '新增', text: '触感反馈总开关，可一键关闭全部震动反馈' },
+      { kind: '优化', text: '使用自定义背景时，深浅显示模式由背景明暗自动决定，无需再手动切换' },
+      { kind: '优化', text: '内置 Excel 课表模板替换为新版《2603025 班学期周课表》，20 周 10 节次，连堂课可正确识别' },
+      { kind: '修复', text: '选择「极光」渐变后卡片与开关仍显示为绿色的问题' },
+      { kind: '修复', text: '自定义背景与卡片底色脱节、背景与卡片像两块不同界面的问题' },
+    ],
+  },
+  {
+    version: '2.4.0',
+    date: '2026-10-25',
+    title: '班级课表云同步与账号体系',
+    items: [
+      { kind: '新增', text: '班级课表云同步：管理员上传本机课表，同学凭班级码加入后手动拉取覆盖本机' },
+      { kind: '新增', text: '账号体系：学号 / 账号 + 密码登录注册，可修改用户名' },
+      { kind: '优化', text: '今日预览仪表盘性能优化，减少每分钟重复计算' },
+    ],
+  },
+  {
+    version: '2.3.0',
+    date: '2026-10-25',
+    title: '今日预览仪表盘与天气建议',
+    items: [
+      { kind: '新增', text: '今日预览：剩余课程环形图、学期进度、节假日倒计时、四宫格指标与学分总览' },
+      { kind: '新增', text: '天气与生活建议：支持定位到区或手动选择城市，含带伞与穿衣提示' },
+      { kind: '优化', text: '本周页周次切换自动定位到当前周' },
+    ],
+  },
+  {
+    version: '2.2.0',
+    date: '2026-10-24',
+    title: '课表主体功能成型：三入口主页、周网格、课程编辑与冲突检测',
+    items: [
+      { kind: '新增', text: '课程表主页：今日课程、本周课表、我的三个入口，打开后直接显示可读的课表' },
+      { kind: '新增', text: '下节课倒计时卡：距离下节课还有 X 分钟、课程名、教室和上课时间；上课中转为「正在上《XX》· X 分钟后下课」并带进度条' },
+      { kind: '新增', text: '今日时间轴：按节次列出当天全部课程，含时间、教室、教师' },
+      { kind: '新增', text: '本周周网格：周一至周日 × 节次，课程按颜色区分，附图例（课程名 · 单双周 · 周次范围）' },
+      { kind: '新增', text: '周次选择器：回看第 1–N 周，显示当前周次、单双周和本周总课节数' },
+      { kind: '新增', text: '课程编辑：课程名、教师、教室、学分、课程类型、考核方式、星期、起止节次、起止周、单双周、颜色、备注一次填完' },
+      { kind: '新增', text: '时间冲突检测：保存前自动校验节次与周次重叠，冲突提前预警而不是写进去再说' },
+      { kind: '新增', text: '学校作息自定义：节次可自由增删，每节起止时间可改，课程只记节次序号' },
+      { kind: '新增', text: '多学期管理：新建、编辑、删除、切换学期，记录开学日期与总周数，据此自动识别当前教学周' },
+      { kind: '新增', text: '校历与调课：支持整日停课（节假日）、停课周、按其他星期调课，日期课表随之自动变化' },
+      { kind: '新增', text: '学期数据统计：课程数、总学分、大课次数、单日在校时长、课程类型学分占比条形图、本周每日空闲时段' },
+      { kind: '新增', text: '考试安排：最近一场考试高亮卡（科目、倒计时、考场、座位），配考试列表与考前提醒开关' },
+      { kind: '新增', text: '作业管理：未完成、已完成分组，按截止时间排序，一键勾选完成' },
+      { kind: '新增', text: '上课提醒：课前 5、10、15、20 分钟四档可选，通知带课程名与教室' },
+      { kind: '新增', text: '考试双重提醒：考前 1 天与考前 1 小时各推一次，可总开关，含通知权限检查与引导' },
+      { kind: '新增', text: 'Excel 导入：选 .xlsx/.xls 自动解析，先预览（学期、开学日期、周数、作息、课程数、警告）再新建学期写入本地数据库' },
+      { kind: '新增', text: '剪贴板导入：复制一段表格文本即可还原成课表' },
+      { kind: '新增', text: '导入诊断：展示行数、合并区域、周块、节次行、课程格子数与失败原因，导入失败时不用猜' },
+      { kind: '新增', text: 'JSON 备份与恢复：导出全量备份，恢复前二次确认，校验不通过不影响现有数据' },
+      { kind: '新增', text: '导出 Excel(CSV)：课程 + 作业，可直接用 Excel/WPS 打开' },
+      { kind: '新增', text: '导出 ICS 日历：课程 + 考试，可导入系统日历' },
+      { kind: '新增', text: '内置 Excel 模板与默认课表：随 App 打包、不经过云端，可一键下载模板或写入默认课表' },
+      { kind: '新增', text: '外观：6 套主题色（墨绿、石墨蓝、暮紫、暖橙、青瓷、酒红）+ 显示模式（跟随系统、浅色、深色）' },
+      { kind: '新增', text: '关于与更新：版本信息、内置离线更新日志、从开源仓库检查更新、获取源码、用户须知与免责声明' },
+      { kind: '新增', text: '数据存储：全部数据存本机 SQLite，断网完全可用' },
+      { kind: '优化', text: '课程只存节次序号，作息一改，全部课程时间与提醒自动同步，不用逐条回改' },
+      { kind: '优化', text: '导入先预览后写入本地数据库，解析异常不会污染已有数据' },
+      { kind: '优化', text: '备份恢复做完整性校验，坏文件打不开也删不掉现有课表' },
+      { kind: '优化', text: '更新日志随包内置，无网也能看到历史版本' },
+    ],
+  },
+  {
+    version: '1.0.0',
+    date: '2026-10-24',
+    title: '首个版本：本地课表、课程编辑与上课提醒',
+    items: [
+      { kind: '新增', text: '课程表主页：今日课程、本周课表、我的三个入口，打开后直接显示可读的课表' },
+      { kind: '新增', text: '今日时间轴：按节次列出当天全部课程，含时间、教室、教师' },
+      { kind: '新增', text: '本周周网格：周一至周日 × 节次，课程按颜色区分' },
+      { kind: '新增', text: '课程编辑：课程名、教师、教室、星期、起止节次、起止周、单双周、颜色、备注' },
+      { kind: '新增', text: '学校作息自定义：节次可自由增删，每节起止时间可改，课程只记节次序号' },
+      { kind: '新增', text: '多学期管理：新建、编辑、删除、切换学期，记录开学日期与总周数' },
+      { kind: '新增', text: '上课提醒：课前 5、10、15、20 分钟四档可选，通知带课程名与教室' },
+      { kind: '新增', text: '外观：6 套主题色 + 显示模式（跟随系统、浅色、深色）' },
+      { kind: '新增', text: '数据存储：全部数据存本机 SQLite，断网完全可用' },
+    ],
+  },
+];
+
 function AboutSheet({ onClose }: { onClose: () => void }) {
   const { colors } = useTheme();
   const [showAgreement, setShowAgreement] = useState(false);
   const [showBugReport, setShowBugReport] = useState(false);
+  const [showChangelog, setShowChangelog] = useState(false);
 
   /** 打开 GitHub 源码仓库（系统浏览器） */
   async function openSource() {
@@ -971,6 +1063,31 @@ function AboutSheet({ onClose }: { onClose: () => void }) {
     );
   }
 
+  if (showChangelog) {
+    return (
+      <View>
+        <SheetTitle desc="内置更新日志 · 断网也能查看" />
+        <ScrollView style={{ maxHeight: 480 }} contentContainerStyle={{ paddingBottom: 8 }}>
+          {CHANGELOG.map((v) => (
+            <Card key={v.version} style={{ paddingVertical: 10, paddingHorizontal: 14, marginTop: 12 }}>
+              <Text style={{ color: colors.primary, fontSize: 14, fontWeight: '800' }}>
+                v{v.version} · {v.date}
+              </Text>
+              <Text style={{ color: colors.text, fontSize: 13, fontWeight: '600', marginTop: 3, lineHeight: 19 }}>{v.title}</Text>
+              {v.items.map((it, i) => (
+                <Text key={i} style={{ color: colors.textSecondary, fontSize: 12.5, lineHeight: 19, marginTop: 4 }}>
+                  <Text style={{ color: colors.primary, fontWeight: '700' }}>{it.kind}：</Text>
+                  {it.text}
+                </Text>
+              ))}
+            </Card>
+          ))}
+        </ScrollView>
+        <Button label="返回" variant="ghost" onPress={() => setShowChangelog(false)} style={{ marginTop: 14 }} />
+      </View>
+    );
+  }
+
   return (
     <View>
       <SheetTitle desc="课程表 · 版本与开发信息" />
@@ -994,6 +1111,7 @@ function AboutSheet({ onClose }: { onClose: () => void }) {
 
       <Card style={{ paddingVertical: 4, marginTop: 12 }}>
         <Row label="获取源码" value="GitHub" chevron onPress={() => void openSource()} />
+        <Row label="版本更新日志" hint="v1.0.0 → v2.5.0" chevron onPress={() => setShowChangelog(true)} />
         <Row label="遇到 bug 了？" hint="点击反馈" chevron onPress={() => setShowBugReport(true)} />
         <Row label="用户须知与免责声明" chevron onPress={() => setShowAgreement(true)} />
       </Card>
