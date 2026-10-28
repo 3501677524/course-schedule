@@ -48,6 +48,18 @@ function confirmAction(title: string, detail: string): Promise<boolean> {
   });
 }
 
+/** 给云端请求加超时：supabase.co 国内直连不稳，请求可能长时间挂起不返回也不报错，
+ *  导致界面「点了没反应」。超时后明确抛错，由调用方弹出可读提示。 */
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`${label}超时（${Math.round(ms / 1000)} 秒），请检查网络后重试`)), ms);
+    p.then(
+      (v) => { clearTimeout(t); resolve(v); },
+      (e) => { clearTimeout(t); reject(e); },
+    );
+  });
+}
+
 export function CloudClassPanel({ onClose }: { onClose: () => void }) {
   const { colors } = useTheme();
   const app = useApp();
@@ -67,9 +79,9 @@ export function CloudClassPanel({ onClose }: { onClose: () => void }) {
       return;
     }
     try {
-      const c = await getMyClass();
+      const c = await withTimeout(getMyClass(), 15000, '读取班级信息');
       setCls(c);
-      setMeta(c ? await getLatestSnapshotMeta() : null);
+      setMeta(c ? await withTimeout(getLatestSnapshotMeta(), 15000, '查询云端课表') : null);
     } catch (e) {
       if (!silent) Alert.alert('读取班级信息失败', e instanceof Error ? e.message : String(e));
     }
@@ -95,17 +107,17 @@ export function CloudClassPanel({ onClose }: { onClose: () => void }) {
   const doJoin = () =>
     guard(async () => {
       console.info(`[cloud-panel] 点击确认加入，输入班级码「${codeInput}」`);
-      const c = await joinClass(codeInput);
+      const c = await withTimeout(joinClass(codeInput), 15000, '加入班级');
       setMode('none');
       setCodeInput('');
       setCls(c);
-      setMeta(await getLatestSnapshotMeta());
+      setMeta(await withTimeout(getLatestSnapshotMeta(), 15000, '查询云端课表'));
       Alert.alert('已加入班级', `「${c.name}」（班级码 ${c.code}）`);
     });
 
   const doCreate = () =>
     guard(async () => {
-      const c = await createClass(nameInput);
+      const c = await withTimeout(createClass(nameInput), 15000, '创建班级');
       setMode('none');
       setNameInput('');
       setCls(c);
@@ -115,8 +127,8 @@ export function CloudClassPanel({ onClose }: { onClose: () => void }) {
 
   const doUpload = () =>
     guard(async () => {
-      const r = await uploadSnapshot();
-      setMeta(await getLatestSnapshotMeta());
+      const r = await withTimeout(uploadSnapshot(), 30000, '上传课表');
+      setMeta(await withTimeout(getLatestSnapshotMeta(), 15000, '查询云端课表'));
       Alert.alert('上传成功', `已将本机课表（${r.courseCount} 门课程）发布到云端，同学可拉取最新课表。`);
     });
 
@@ -125,10 +137,12 @@ export function CloudClassPanel({ onClose }: { onClose: () => void }) {
       // 每次点击都重新查一次云端快照，避免旧缓存导致误判「没有课表」
       let m = meta;
       try {
-        m = await getLatestSnapshotMeta();
+        m = await withTimeout(getLatestSnapshotMeta(), 15000, '查询云端课表');
         setMeta(m);
       } catch (e) {
         console.warn('[cloud-panel] 查询云端快照失败', e);
+        Alert.alert('查询云端课表失败', e instanceof Error ? e.message : '请检查网络后重试');
+        return;
       }
       if (!m) {
         Alert.alert('暂无云端课表', '管理员还没有上传课表，暂时没有可拉取的内容。\n\n请等管理员在他的「班级云同步」里点「上传本机课表到云端」后再试。');
@@ -137,7 +151,7 @@ export function CloudClassPanel({ onClose }: { onClose: () => void }) {
       const detail = `将用管理员上传的课表覆盖本机当前学期数据（学期「${m.semesterName}」，${m.courseCount} 门课程）。本机该学期的课程/考试/作业会被替换，个人提醒设置不受影响。`;
       const ok = await confirmAction('拉取云端课表', detail);
       if (!ok) return;
-      const r = await pullLatestSnapshotToLocal();
+      const r = await withTimeout(pullLatestSnapshotToLocal(), 30000, '拉取云端课表');
       await app.refresh();
       Alert.alert('拉取完成', `已导入学期「${r.semesterName}」，共 ${r.courseCount} 门课程。`);
     });
@@ -147,7 +161,7 @@ export function CloudClassPanel({ onClose }: { onClose: () => void }) {
       if (!cls) return;
       const ok = await confirmAction('退出班级', `退出后你将不再是「${cls.name}」的成员，无法再拉取该班级的云端课表（本机已有数据不受影响）。确定退出吗？`);
       if (!ok) return;
-      await leaveClass(cls.classId);
+      await withTimeout(leaveClass(cls.classId), 15000, '退出班级');
       setCls(null);
       setMeta(null);
       Alert.alert('已退出班级', `已退出「${cls.name}」，本机课表数据不受影响。`);
