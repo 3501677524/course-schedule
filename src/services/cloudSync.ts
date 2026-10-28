@@ -235,6 +235,26 @@ export async function createClass(name: string): Promise<ClassInfo> {
   }
   throw new Error(`班级码重复，请稍后重试：${lastErr}`);
 }
+/** 退出班级（仅成员可用）：删除当前用户在班级中的成员记录；管理员不能退出班级 */
+export async function leaveClass(classId: string): Promise<void> {
+  const uid = await requireUid();
+  const { data: mine, error: e0 } = await supabase
+    .from('class_members')
+    .select('role')
+    .eq('class_id', classId)
+    .eq('user_id', uid)
+    .maybeSingle();
+  if (e0) throw new Error(`查询成员状态失败：${e0.message}`);
+  if (!mine) throw new Error('你不在该班级中');
+  if (mine.role === 'owner') throw new Error('管理员不能退出班级，如需解散请与平台联系');
+  const { error } = await supabase
+    .from('class_members')
+    .delete()
+    .eq('class_id', classId)
+    .eq('user_id', uid);
+  if (error) throw new Error(`退出班级失败：${error.message}`);
+  console.info(`[cloud-class] 已退出班级 ${classId}`);
+}
 /* ---------------------------- 快照：上传 / 拉取 ---------------------------- */
 /** 从本机 SQLite 组装共享课表 payload（当前学期 + 全局作息） */
 export async function buildLocalPayload(): Promise<TimetablePayload> {

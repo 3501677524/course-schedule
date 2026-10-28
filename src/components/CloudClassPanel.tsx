@@ -11,6 +11,7 @@ import {
   getLatestSnapshotMeta,
   getMyClass,
   joinClass,
+  leaveClass,
   pullLatestSnapshotToLocal,
   signOut,
   uploadSnapshot,
@@ -32,6 +33,19 @@ function fmtTime(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return `${d.getMonth() + 1}月${d.getDate()}日 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/** 通用确认框：网页端 Alert 多按钮回调不生效，改用 window.confirm；原生端保持 Alert */
+function confirmAction(title: string, detail: string): Promise<boolean> {
+  if (Platform.OS === 'web') {
+    return Promise.resolve(typeof window !== 'undefined' ? window.confirm(`${title}\n\n${detail}`) : true);
+  }
+  return new Promise((resolve) => {
+    Alert.alert(title, detail, [
+      { text: '取消', style: 'cancel', onPress: () => resolve(false) },
+      { text: '确认', onPress: () => resolve(true) },
+    ]);
+  });
 }
 
 export function CloudClassPanel({ onClose }: { onClose: () => void }) {
@@ -109,23 +123,23 @@ export function CloudClassPanel({ onClose }: { onClose: () => void }) {
   const doPull = () =>
     guard(async () => {
       const m = meta ?? (await getLatestSnapshotMeta());
-      Alert.alert(
-        '拉取云端课表',
-        `将用管理员上传的课表覆盖本机当前学期数据（${m ? `学期「${m.semesterName}」，${m.courseCount} 门课程` : ''}）。本机该学期的课程/考试/作业会被替换，个人提醒设置不受影响。`,
-        [
-          { text: '取消', style: 'cancel' },
-          {
-            text: '确认拉取',
-            onPress: () => {
-              void guard(async () => {
-                const r = await pullLatestSnapshotToLocal();
-                await app.refresh();
-                Alert.alert('拉取完成', `已导入学期「${r.semesterName}」，共 ${r.courseCount} 门课程。`);
-              });
-            },
-          },
-        ],
-      );
+      const detail = `将用管理员上传的课表覆盖本机当前学期数据（${m ? `学期「${m.semesterName}」，${m.courseCount} 门课程` : ''}）。本机该学期的课程/考试/作业会被替换，个人提醒设置不受影响。`;
+      const ok = await confirmAction('拉取云端课表', detail);
+      if (!ok) return;
+      const r = await pullLatestSnapshotToLocal();
+      await app.refresh();
+      Alert.alert('拉取完成', `已导入学期「${r.semesterName}」，共 ${r.courseCount} 门课程。`);
+    });
+
+  const doLeave = () =>
+    guard(async () => {
+      if (!cls) return;
+      const ok = await confirmAction('退出班级', `退出后你将不再是「${cls.name}」的成员，无法再拉取该班级的云端课表（本机已有数据不受影响）。确定退出吗？`);
+      if (!ok) return;
+      await leaveClass(cls.classId);
+      setCls(null);
+      setMeta(null);
+      Alert.alert('已退出班级', `已退出「${cls.name}」，本机课表数据不受影响。`);
     });
 
   const doSignOut = () => {
@@ -236,6 +250,9 @@ export function CloudClassPanel({ onClose }: { onClose: () => void }) {
               <Button label={busy ? '处理中…' : '上传本机课表到云端'} disabled={busy} onPress={doUpload} />
             ) : null}
             <Button label="拉取云端课表到本机" variant="secondary" disabled={busy || !meta} onPress={doPull} />
+            {!cls.isOwner ? (
+              <Button label="退出班级" variant="danger" disabled={busy} onPress={doLeave} />
+            ) : null}
           </View>
           {cls.isOwner ? (
             <Text style={[styles.hint, { color: colors.textMuted }]}>
