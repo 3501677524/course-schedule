@@ -122,8 +122,19 @@ export function CloudClassPanel({ onClose }: { onClose: () => void }) {
 
   const doPull = () =>
     guard(async () => {
-      const m = meta ?? (await getLatestSnapshotMeta());
-      const detail = `将用管理员上传的课表覆盖本机当前学期数据（${m ? `学期「${m.semesterName}」，${m.courseCount} 门课程` : ''}）。本机该学期的课程/考试/作业会被替换，个人提醒设置不受影响。`;
+      // 每次点击都重新查一次云端快照，避免旧缓存导致误判「没有课表」
+      let m = meta;
+      try {
+        m = await getLatestSnapshotMeta();
+        setMeta(m);
+      } catch (e) {
+        console.warn('[cloud-panel] 查询云端快照失败', e);
+      }
+      if (!m) {
+        Alert.alert('暂无云端课表', '管理员还没有上传课表，暂时没有可拉取的内容。\n\n请等管理员在他的「班级云同步」里点「上传本机课表到云端」后再试。');
+        return;
+      }
+      const detail = `将用管理员上传的课表覆盖本机当前学期数据（学期「${m.semesterName}」，${m.courseCount} 门课程）。本机该学期的课程/考试/作业会被替换，个人提醒设置不受影响。`;
       const ok = await confirmAction('拉取云端课表', detail);
       if (!ok) return;
       const r = await pullLatestSnapshotToLocal();
@@ -249,7 +260,7 @@ export function CloudClassPanel({ onClose }: { onClose: () => void }) {
             {cls.isOwner ? (
               <Button label={busy ? '处理中…' : '上传本机课表到云端'} disabled={busy} onPress={doUpload} />
             ) : null}
-            <Button label="拉取云端课表到本机" variant="secondary" disabled={busy || !meta} onPress={doPull} />
+            <Button label="拉取云端课表到本机" variant="secondary" disabled={busy} onPress={doPull} />
             {!cls.isOwner ? (
               <Button label="退出班级" variant="danger" disabled={busy} onPress={doLeave} />
             ) : null}
