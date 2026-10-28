@@ -64,6 +64,20 @@ const BG_MODE_LABELS: Record<AppSettings['bgMode'], string> = {
   image: '图片',
 };
 
+/** 通用确认框：网页端 Alert 多按钮回调不生效，改用 window.confirm；原生端保持 Alert */
+function confirmOnWeb(title: string, detail: string): Promise<boolean> {
+  if (Platform.OS === 'web') {
+    const ok = typeof window !== 'undefined' ? window.confirm(`${title}\n\n${detail}`) : true;
+    return Promise.resolve(ok);
+  }
+  return new Promise((resolve) => {
+    Alert.alert(title, detail, [
+      { text: '取消', style: 'cancel', onPress: () => resolve(false) },
+      { text: '确定', onPress: () => resolve(true) },
+    ]);
+  });
+}
+
 export default function MineScreen() {
  const runId = useReplayId();
   const app = useApp();
@@ -680,18 +694,16 @@ function DataSheet({ onClose }: { onClose: () => void }) {
     try {
       const payload = await pickBackup();
       if (!payload) { Alert.alert('已取消', '未选择备份文件，或文件格式不正确'); return; }
-      Alert.alert('确认恢复', '导入会覆盖当前全部本地数据（课程、考试、作业、作息、学期）。确定继续吗？', [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '导入',
-          onPress: () => {
-            void importBackup(payload)
-              .then(() => app.refresh())
-              .then(() => Alert.alert('恢复成功', '数据已从备份文件恢复'))
-              .catch((e) => { console.warn('[mine] 导入失败', e); Alert.alert('提示', '导入失败：备份文件校验未通过，现有数据未受影响'); });
-          },
-        },
-      ]);
+      const ok = await confirmOnWeb('确认恢复', '导入会覆盖当前全部本地数据（课程、考试、作业、作息、学期）。确定继续吗？');
+      if (!ok) return;
+      try {
+        await importBackup(payload);
+        await app.refresh();
+        Alert.alert('恢复成功', '数据已从备份文件恢复');
+      } catch (e) {
+        console.warn('[mine] 导入失败', e);
+        Alert.alert('提示', '导入失败：备份文件校验未通过，现有数据未受影响');
+      }
     } finally {
       setBusy(false);
     }
@@ -708,7 +720,7 @@ function DataSheet({ onClose }: { onClose: () => void }) {
         Alert.alert('导入失败', `${picked.message}\n\n请确认文件是「按周课表」格式的 Excel：每周一块「第 N 周」标题行 + 「节次 / 时间」两列 + 周一至周日七列，格子内容为「课程名（换行）教室 · 教师」。`);
         return;
       }
-      confirmImportPlan(picked.plan);
+      await confirmImportPlan(picked.plan);
     } finally {
       setBusy(false);
     }
@@ -725,7 +737,7 @@ function DataSheet({ onClose }: { onClose: () => void }) {
         Alert.alert('导入失败', parsed.message);
         return;
       }
-      confirmImportPlan(parsed.plan);
+      await confirmImportPlan(parsed.plan);
     } catch (e) {
       console.warn('[mine] 读取剪贴板失败', e);
       Alert.alert('提示', '读取剪贴板失败，请重试或改用「导入课表（Excel）」');
@@ -735,7 +747,7 @@ function DataSheet({ onClose }: { onClose: () => void }) {
   }
 
   /** 解析结果确认弹窗：展示学期/作息/课程统计与警告，确认后落库 */
-  function confirmImportPlan(plan: TimetablePlan) {
+  async function confirmImportPlan(plan: TimetablePlan) {
     const detail =
       `学期：${plan.semesterName}\n` +
       `开学：${plan.startDate}（第 1 周周一），共 ${plan.totalWeeks} 周\n` +
@@ -743,39 +755,36 @@ function DataSheet({ onClose }: { onClose: () => void }) {
       `课程：${plan.courses.length} 条\n\n` +
       (plan.warnings.length > 0 ? `注意：\n${plan.warnings.slice(0, 5).join('\n')}${plan.warnings.length > 5 ? `\n…等 ${plan.warnings.length} 条` : ''}\n\n` : '') +
       '将新建该学期并设为当前，同时覆盖作息表。原有学期数据保留，可在学期管理里切换或删除。确定导入吗？';
-    Alert.alert('确认导入课表', detail, [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '导入',
-        onPress: () => {
-          console.info(`[mine] 开始导入周课表「${plan.fileName}」`);
-          void applyTimetablePlan(plan)
-            .then(() => app.refresh())
-            .then(() => Alert.alert('导入成功', `已导入《${plan.semesterName}》：${plan.courses.length} 条课程安排`))
-            .catch((e) => { console.warn('[mine] 周课表导入落库失败', e); Alert.alert('提示', '导入失败，现有数据未受影响，请重试'); });
-        },
-      },
-    ]);
+    const ok = await confirmOnWeb('确认导入课表', detail);
+    if (!ok) return;
+    console.info(`[mine] 开始导入周课表「${plan.fileName}」`);
+    try {
+      await applyTimetablePlan(plan);
+      await app.refresh();
+      Alert.alert('导入成功', `已导入《${plan.semesterName}》：${plan.courses.length} 条课程安排`);
+    } catch (e) {
+      console.warn('[mine] 周课表导入落库失败', e);
+      Alert.alert('提示', '导入失败，现有数据未受影响，请重试');
+    }
   }
 
   /** 强制把内置默认课表（2603025 班）覆盖写入当前数据 */
-  function doRestoreDefault() {
+  async function doRestoreDefault() {
     const detail = `学期：${DEFAULT_SEMESTER.name}\n开学：${formatDateCN(DEFAULT_SEMESTER.startDate)}（共 ${DEFAULT_SEMESTER.totalWeeks} 周）\n作息：${DEFAULT_PERIODS.length} 节\n课程：${DEFAULT_COURSES.length} 条\n\n注意：该学期的原有课程与作息将被覆盖，其它学期的数据不受影响。`;
-    Alert.alert('设置为默认课表', detail, [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '确认设置',
-        onPress: () => {
-          console.info('[mine] 用户确认「设置为默认课表」，开始覆盖写入');
-          setBusy(true);
-          void restoreDefaultTimetable()
-            .then(() => app.refresh())
-            .then(() => Alert.alert('已设置为默认课表', `${DEFAULT_SEMESTER.name}\n共 ${DEFAULT_COURSES.length} 条课程安排`))
-            .catch((e) => { console.warn('[mine] 恢复默认课表失败', e); Alert.alert('提示', '设置失败，现有数据未受影响，请重试'); })
-            .finally(() => setBusy(false));
-        },
-      },
-    ]);
+    const ok = await confirmOnWeb('设置为默认课表', detail);
+    if (!ok) return;
+    console.info('[mine] 用户确认「设置为默认课表」，开始覆盖写入');
+    setBusy(true);
+    try {
+      await restoreDefaultTimetable();
+      await app.refresh();
+      Alert.alert('已设置为默认课表', `${DEFAULT_SEMESTER.name}\n共 ${DEFAULT_COURSES.length} 条课程安排`);
+    } catch (e) {
+      console.warn('[mine] 恢复默认课表失败', e);
+      Alert.alert('提示', '设置失败，现有数据未受影响，请重试');
+    } finally {
+      setBusy(false);
+    }
   }
 
   /** 诊断：把解析过程的中间结果直接展示出来，定位「导入失败」卡在哪一步 */

@@ -37,8 +37,15 @@ export async function pickBackup(): Promise<BackupPayload | null> {
     const result = await DocumentPicker.getDocumentAsync({ type: ['application/json', 'text/plain'], copyToCacheDirectory: true });
     if (result.canceled || !result.assets || result.assets.length === 0) return null;
     const picked = result.assets[0];
-    const file = new File(picked.uri);
-    const text = await file.text();
+    let text: string;
+    if (Platform.OS === 'web') {
+      // expo-file-system 的 File 类在 Web 上不可用，改走 fetch 读取选中文件
+      const resp = await fetch(picked.uri);
+      text = await resp.text();
+    } else {
+      const file = new File(picked.uri);
+      text = await file.text();
+    }
     const parsed = JSON.parse(text) as BackupPayload;
     if (!parsed || parsed.version !== 1 || !parsed.tables) {
       throw new Error('bad shape');
