@@ -1,22 +1,18 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
     <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
     <title>课程表</title>
-    <!-- The `react-native-web` recommended style reset: https://necolas.github.io/react-native-web/docs/setup/#root-element -->
     <style id="expo-reset">
-      /* These styles make the body full-height */
       html,
       body {
         height: 100%;
       }
-      /* These styles disable body scrolling if you are using <ScrollView> */
       body {
         overflow: hidden;
       }
-      /* These styles make the root element full-height */
       #root {
         display: flex;
         height: 100%;
@@ -26,12 +22,23 @@
   </head>
 
   <body>
-    <!-- Use static rendering with Expo Router to support running without JavaScript. -->
     <noscript>
-      You need to enable JavaScript to run this app.
+      需要启用 JavaScript 才能运行这个应用。
     </noscript>
-    <!-- The root element for your Expo app. -->
     <div id="root"></div>
-  <script src="/course-schedule/_expo/static/js/web/entry-1afeb61707d56e07f8e565f66bd05353.js" defer></script>
-</body>
+    <script>
+      (function () {
+        // GitHub Pages 对任意不存在的路径统一返回根目录 404.html。
+        // 这里根据路径前缀选择正确的应用包：/course-schedule/solo/* → 单机版，其余 → 云同步版。
+        var isSolo = location.pathname.indexOf('/course-schedule/solo') === 0;
+        var src = isSolo
+          ? '/course-schedule/solo/_expo/static/js/web/entry-5fb4794c1885119f57cc0ff2a76508ef.js'
+          : '/course-schedule/_expo/static/js/web/entry-1afeb61707d56e07f8e565f66bd05353.js';
+        var s = document.createElement('script');
+        s.src = src;
+        s.defer = true;
+        document.body.appendChild(s);
+      })();
+    </script>
+  </body>
 </html>
